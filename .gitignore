@@ -3,5 +3,11 @@ node_modules
 .env
 
 /generated/prisma
+
+# Ignore database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Ignore test files
 test.http
-dev.db
