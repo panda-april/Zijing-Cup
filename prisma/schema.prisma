@@ -1,0 +1,191 @@
+// schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // 练手阶段使用 sqlite 即可，生成单个文件，无需配置服务器
+  // 后期部署可以无缝切换为 provider = "mysql" 或 "postgresql"
+  provider = "sqlite" 
+}
+
+// 1. 用户表 [cite: 92-94]
+model User {
+  UserID   String     @id @default(uuid()) // 使用 UUID 替代 BIGINT，更契合现代分布式开发
+  UserName String     @unique // 用户名唯一，方便登录验证
+  UserRole String     @default("audience") // 默认降级为观众 [cite: 317-318]
+  PasswordHash String // 存储密码哈希值，切勿存明文密码
+
+  Rank         String?    // 段位，例如 "钻石", "大地球"
+  MainRole     String?    // 主玩位置，例如 "中单", "突破手"
+  Intro        String?    // 个人简介
+  
+  // 关联属性
+  LedTeams Team[]     @relation("TeamCaptain") // 作为队长带领的队伍
+  UserTeams UserTeam[] // 作为队员参与的关联
+  AdminLogs AdminLog[] // 作为管理员操作的日志
+
+  TeamRequests      TeamRequest[] @relation("TargetUser")
+  InitiatedRequests TeamRequest[] @relation("InitiatorUser")
+}
+
+// 2. 项目表 [cite: 99-101]
+model Game {
+  GameID      String       @id @default(uuid())
+  GameName    String
+  
+  Teams       Team[]
+  Tournaments Tournament[]
+}
+
+// 3. 队伍表
+model Team {
+  TeamID    String @id @default(uuid())
+  TeamName  String
+  
+  // 外键：项目ID
+  GameID    String
+  Game      Game   @relation(fields: [GameID], references: [GameID])
+  
+  // 外键：队长ID
+  CaptainID String
+  Captain   User   @relation("TeamCaptain", fields: [CaptainID], references: [UserID])
+  
+  // 关联属性
+  Members   UserTeam[]
+  SignUps   SignUp[]
+
+  // ===  新增：队伍关联的审批和邀请单 ===
+  Requests  TeamRequest[]
+
+  // 其他关联
+  MatchParticipations MatchParticipation[]
+}
+
+// 4. 用户队伍关联表 (多对多)
+// 由于除了关联关系外，还有 Is_Captain 这个额外字段，我们需要显式定义中间表
+model UserTeam {
+  UserID    String
+  TeamID    String
+  IsCaptain Boolean @default(false)
+
+  // 入队时间 (对应前端的 JOINED: xxx) 
+  JoinedAt  DateTime @default(now())
+
+  User      User    @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
+  Team      Team    @relation(fields: [TeamID], references: [TeamID], onDelete: Cascade)
+
+  // 复合主键
+  @@id([UserID, TeamID]) 
+}
+
+model MatchInfo {
+  MatchID        String    @id @default(uuid()) // 对应你原本的候选键 [cite: 105-106]
+  MatchName      String                         // 比赛名称 [cite: 105]
+  MaxTeamAmount  Int                            // 最大队伍数 [cite: 105]
+  TournamentID   String    
+  Tournament     Tournament @relation(fields: [TournamentID], references: [TournamentID], onDelete: Cascade)
+  
+  FinalStartTime DateTime? 
+  Status         String    @default("Scheduling") 
+
+  MatchParticipations MatchParticipation[] // 关联比赛参与表，方便查询参赛队伍和结果
+}
+
+// 5. 赛事表 [cite: 102-104]
+model Tournament {
+  TournamentID   String @id @default(uuid())
+  TournamentName String
+  MaxTeamSize    Int
+  
+  GameID         String
+  Game           Game   @relation(fields: [GameID], references: [GameID])
+  
+  SignUps        SignUp[]
+  MatchInfos     MatchInfo[]
+}
+
+// 6. 报名表 [cite: 395-396] (注：文档119处写的是Match_ID，但在存储过程中实际是向Tournament报名，这里以存储过程为准)
+model SignUp {
+  TournamentID String
+  TeamID       String
+  SignUpTime   DateTime @default(now())
+
+  Tournament   Tournament @relation(fields: [TournamentID], references: [TournamentID])
+  Team         Team       @relation(fields: [TeamID], references: [TeamID])
+
+  @@id([TournamentID, TeamID])
+}
+
+model MatchProposal {
+  ProposalID      String   @id @default(uuid())
+  MatchID         String   
+  InitiatorTeamID String   // 发起方队伍ID
+  ResponderTeamID String   // 接收方队伍ID (对手)
+  
+  // 核心改动：用 JSON 存储可选时间，告别臃肿的关联表！
+  // 比如存入：["2024-11-10T10:00:00Z", "2024-11-10T14:00:00Z", "2024-11-11T20:00:00Z"]
+  ProposedTimes   String   // 如果用 SQLite 练手，用 String 存 JSON 字符串；如果是 PostgreSQL，直接用 Json 类型
+
+  Status          String   @default("Pending") // Pending(待对手确认), Accepted(已接受), Rejected(已拒绝)
+  CreatedAt       DateTime @default(now())
+}
+
+model MatchParticipation {
+  // 联合主键：某场比赛中的某支队伍
+  MatchID   String
+  TeamID    String
+
+  // 比赛结果数据（打完比赛才会有，所以允许为空 ?）
+  Score     Float?     // 分数（有些电竞项目可能有小数点，用 Float 比 Int 安全）
+  FinalRank Int?       // 最终排名 [cite: 654]
+  Status    String     @default("Registered") // 状态：Registered(已报名), Disqualified(弃权/取消资格) [cite: 548, 587]
+
+  // 双向关联（记得在 MatchInfo 和 Team 模型里也要加上对应的数组字段哦）
+  Match     MatchInfo  @relation(fields: [MatchID], references: [MatchID], onDelete: Cascade)
+  Team      Team       @relation(fields: [TeamID], references: [TeamID], onDelete: Cascade)
+
+  @@id([MatchID, TeamID]) // 定义联合主键 [cite: 112]
+}
+
+// 管理员操作日志表
+model AdminLog {
+  LogID      String   @id @default(uuid()) // 对应 UUID_SHORT()
+  AdminID    String?  // 操作者ID（如果是系统自动分配的时间，这个可能为空，所以加 ? 允许为空）
+  ActionType String   // 操作类型，例如 'CREATE_TEAM', 'SCHEDULE_CONFLICT'
+  TargetID   String   // 操作目标对象的ID（比如队伍ID、赛事ID）
+  Details    String   // 详细描述拼接的字符串
+  CreatedAt  DateTime @default(now()) // 自动记录操作时间
+
+  // 可选：关联到 User 表，方便查询是哪个管理员操作的
+  Admin      User?    @relation(fields: [AdminID], references: [UserID], onDelete: SetNull)
+}
+
+// 7. 新增核心表：组队申请与邀请单 (TeamRequest) 
+model TeamRequest {
+  RequestID   String   @id @default(uuid())
+  
+  // 关联的队伍
+  TeamID      String
+  Team        Team     @relation(fields: [TeamID], references: [TeamID], onDelete: Cascade)
+  
+  // 目标用户（申请入队的人，或者被邀请的人）
+  TargetUserID String
+  TargetUser   User    @relation("TargetUser", fields: [TargetUserID], references: [UserID], onDelete: Cascade)
+
+  // 操作发起人（谁发出的邀请/推荐。如果是玩家自己申请入队，此字段可留空或等同于 TargetUserID）
+  InitiatorID  String?
+  Initiator    User?   @relation("InitiatorUser", fields: [InitiatorID], references: [UserID], onDelete: SetNull)
+
+  // 业务类型：'APPLY' (主动申请), 'INVITE' (队长直邀), 'RECOMMEND' (队员推荐)
+  Type        String
+  
+  // 当前状态：'PENDING' (待处理), 'APPROVED' (已同意), 'REJECTED' (已拒绝)
+  Status      String   @default("PENDING")
+  
+  // 附加留言（例如："我打狙很强，求拉！" 或 "队友推荐的"）
+  Message     String?
+  
+  CreatedAt   DateTime @default(now())
+}

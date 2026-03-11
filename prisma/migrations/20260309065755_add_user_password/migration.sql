@@ -1,0 +1,10 @@
+-- CreateTable
+CREATE TABLE "AdminLog" (
+    "LogID" TEXT NOT NULL PRIMARY KEY,
+    "AdminID" TEXT,
+    "ActionType" TEXT NOT NULL,
+    "TargetID" TEXT NOT NULL,
+    "Details" TEXT NOT NULL,
+    "CreatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AdminLog_AdminID_fkey" FOREIGN KEY ("AdminID") REFERENCES "User" ("UserID") ON DELETE SET NULL ON UPDATE CASCADE
+);
