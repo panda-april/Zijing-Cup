@@ -3,6 +3,5 @@ node_modules
 .env
 
 /generated/prisma
-
-# Ignore frontend directory (separate git repository)
-frontend
+test.http
+dev.db
