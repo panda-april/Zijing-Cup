@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \":*)",
+      "Bash(grep -E \"\\\\.db$\")",
+      "Bash(node -e \"const { PrismaClient } = require\\(''@prisma/client''\\); const prisma = new PrismaClient\\(\\); prisma.user.findMany\\({ select: { UserID: true, UserName: true, Role: true, CreatedAt: true } }\\).then\\(u => console.log\\(JSON.stringify\\(u, null, 2\\)\\)\\).finally\\(\\(\\) => prisma.$disconnect\\(\\)\\)\")",
+      "Bash(node check_users.mjs)",
+      "Bash(node check_users.cjs)",
+      "Bash(cd:*)",
+      "Bash(npx prisma:*)",
+      "Bash(curl -s http://localhost:3000/api/teams)",
+      "Bash(curl -s http://localhost:3000/api/games)",
+      "Bash(for f:*)",
+      "Bash(do sed:*)",
+      "Bash(done)",
+      "Bash(xargs grep:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

@@ -24,26 +24,26 @@ api.interceptors.request.use(
 );
 
 // 3. 响应拦截器 (Response Interceptor) - 统一处理过期和报错
+let isHandling401 = false;
+
 api.interceptors.response.use(
   (response) => {
-    // 如果后端正常返回数据，直接放行
     return response;
   },
   (error) => {
-    // 集中处理所有的错误状态码
     if (error.response && error.response.status === 401) {
-      // 401 代表未登录或 Token 失效
-      alert('登录身份已过期或未授权，请重新登录！');
-      
-      // 清空失效的本地数据
-      localStorage.removeItem('token');
-      localStorage.removeItem('userName');
-      
-      // 强制打回登录页
-      window.location.href = '/login';
+      // 用 flag 防止并发请求重复触发
+      if (!isHandling401) {
+        isHandling401 = true;
+        localStorage.removeItem('token');
+        localStorage.removeItem('userName');
+        localStorage.removeItem('userRole');
+        // 通知 App.jsx 处理登出和提示，而不是跳路由或弹 alert
+        window.dispatchEvent(new CustomEvent('auth:expired'));
+        // 短暂延迟后重置 flag，允许真正的下一次过期再次触发
+        setTimeout(() => { isHandling401 = false; }, 3000);
+      }
     }
-    
-    // 把错误继续抛出，让具体页面的 catch 也能抓到做个性化提示
     return Promise.reject(error);
   }
 );
