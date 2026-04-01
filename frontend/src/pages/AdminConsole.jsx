@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert';
 import CreateTournament from './DeployTournament';
+import TournamentEdit from './TournamentEdit';
 
 export default function AdminDashboard({ onLogout }) {
   const [activeTab, setActiveTab] = useState('OVERVIEW');
   const [showCreateTournament, setShowCreateTournament] = useState(false);
+  const [showEditTournament, setShowEditTournament] = useState(false);
+  const [editingTournamentId, setEditingTournamentId] = useState(null);
   const [newGameName, setNewGameName] = useState('');
+  const [newGameType, setNewGameType] = useState('H2H');
   const [games, setGames] = useState([]);
   const [tournaments, setTournaments] = useState([]);
   const [pendingResults, setPendingResults] = useState([]);
@@ -36,6 +41,7 @@ export default function AdminDashboard({ onLogout }) {
         setGames(gameList.map(g => ({
           id: g.GameID,
           name: g.GameName,
+          type: g.GameType || 'H2H',
           teamsCount: teamList.filter(t => t.GameID === g.GameID).length
         })));
 
@@ -98,24 +104,40 @@ export default function AdminDashboard({ onLogout }) {
     e.preventDefault();
     if(!newGameName) return;
     try {
-      const res = await api.post('/games', { gameName: newGameName });
+      const res = await api.post('/games', { gameName: newGameName, gameType: newGameType });
       const newGame = res.data?.data;
       setGames([...games, { id: newGame.GameID, name: newGame.GameName, teamsCount: 0 }]);
-      alert(`成功添加新比赛项目: ${newGameName}`);
+      showAlert(`成功添加新比赛项目: ${newGameName}`);
       setNewGameName('');
+      setNewGameType('H2H');
     } catch (error) {
-      alert(error.response?.data?.error || '新增项目失败');
+      showAlert(error.response?.data?.error || '新增项目失败');
     }
   };
 
-  // 🚀 新增：极其硬核的删除保护逻辑
-  const handleDeleteGame = async (gameId, gameName) => {
-    if (window.confirm(`DANGER OPERATION: 确定要彻底删除项目 [${gameName}] 吗？\n警告：这可能会导致所有关联该项目的赛事和队伍数据出现异常！`)) {
+  // 软停用项目（推荐方式）
+  const handleDeactivateGame = async (gameId, gameName) => {
+    if (window.confirm(`WARNING: 确定要停用项目 [${gameName}] 吗？\n项目停用后不会再出现在选择列表中，但数据仍保留在数据库中。`)) {
       try {
         await api.put(`/games/${gameId}/deactivate`, { isActive: false });
         setGames(games.filter(g => g.id !== gameId));
+        showAlert('项目已停用');
       } catch (error) {
-        alert(error.response?.data?.error || '停用项目失败');
+        showAlert(error.response?.data?.error || '停用失败');
+      }
+    }
+  };
+
+  // 彻底删除项目（仅当无关联数据时允许）
+  const handleHardDeleteGame = async (gameId, gameName) => {
+    if (window.confirm(`EXTREME DANGER: 确定要彻底删除项目 [${gameName}] 吗？\n此操作不可恢复！\n确认：该项目下没有队伍和赛事，删除只是为了清理手滑输入的错误数据。`)) {
+      if (!window.confirm(`二次确认：你确定要彻底删除 [${gameName}] 吗？`)) return;
+      try {
+        await api.delete(`/games/${gameId}`);
+        setGames(games.filter(g => g.id !== gameId));
+        showAlert('项目已彻底删除');
+      } catch (error) {
+        showAlert(error.response?.data?.error || '删除失败');
       }
     }
   };
@@ -125,7 +147,7 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const handleInputResult = (matchId) => {
-    alert(`将打开比赛 [${matchId}] 的赛果录入面版`);
+    showAlert(`将打开比赛 [${matchId}] 的赛果录入面版`);
   };
 
   // === 1. 子视图：系统总览 ===
@@ -205,7 +227,13 @@ export default function AdminDashboard({ onLogout }) {
             </div>
             
             <div className="flex gap-3">
-              <button className="border-2 border-black px-4 py-2 text-xs font-bold  hover:bg-black hover:text-white transition-colors">
+              <button
+                onClick={() => {
+                  setEditingTournamentId(t.id);
+                  setShowEditTournament(true);
+                }}
+                className="border-2 border-black px-4 py-2 text-xs font-bold  hover:bg-black hover:text-white transition-colors"
+              >
                 EDIT DETAILS
               </button>
               {t.status !== 'COMPLETED' && (
@@ -279,8 +307,8 @@ export default function AdminDashboard({ onLogout }) {
           <table className="w-full text-left border-collapse border-2 border-black bg-white">
             <thead>
               <tr className="bg-gray-100 border-b-2 border-black">
-                <th className="p-4 text-[10px] font-bold text-gray-500  tracking-widest border-r border-gray-300 w-24">Game ID</th>
                 <th className="p-4 text-[10px] font-bold text-gray-500  tracking-widest border-r border-gray-300">Title</th>
+                <th className="p-4 text-[10px] font-bold text-gray-500  tracking-widest border-r border-gray-300">Match Type</th>
                 <th className="p-4 text-[10px] font-bold text-gray-500  tracking-widest w-32 text-right border-r border-gray-300">Active Teams</th>
                 <th className="p-4 text-[10px] font-bold text-gray-500  tracking-widest w-24 text-center">Action</th>
               </tr>
@@ -288,17 +316,33 @@ export default function AdminDashboard({ onLogout }) {
             <tbody>
               {games.map(g => (
                 <tr key={g.id} className="border-b border-gray-200 hover:bg-gray-50 group transition-colors">
-                  <td className="p-4 text-xs font-bold font-mono border-r border-gray-200">{g.id}</td>
                   <td className="p-4 text-sm font-black  border-r border-gray-200">{g.name}</td>
+                  <td className="p-4 text-sm font-bold  border-r border-gray-200">
+                    <span className={`text-[10px] font-bold px-2 py-1 ${g.type === 'LOBBY' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
+                      {g.type === 'LOBBY' ? 'Lobby (多人混战)' : 'H2H (一对一)'}
+                    </span>
+                  </td>
                   <td className="p-4 text-sm font-bold text-right text-[#660874] border-r border-gray-200">{g.teamsCount}</td>
                   <td className="p-4 text-center">
-                    {/* 🚀 删除按钮：平时隐藏，鼠标悬停到该行时显示 */}
-                    <button 
-                      onClick={() => handleDeleteGame(g.id, g.name)}
-                      className="text-[10px] font-bold text-gray-400 hover:text-white hover:bg-red-600 px-3 py-1  tracking-widest transition-all opacity-0 group-hover:opacity-100"
-                    >
-                      DELETE
-                    </button>
+                    <div className="flex flex-col">
+                      {/* 停用按钮：平时隐藏，鼠标悬停到该行时显示 */}
+                      <button
+                        onClick={() => handleDeactivateGame(g.id, g.name)}
+                        className="text-[10px] font-bold text-gray-400 hover:text-white hover:bg-orange-600 px-2 py-1  tracking-widest transition-all opacity-0 group-hover:opacity-100 mb-1"
+                      >
+                        DEACTIVATE
+                      </button>
+                      {g.teamsCount === 0 && (
+                        <button
+                          onClick={() => handleHardDeleteGame(g.id, g.name)}
+                          className="text-[10px] font-bold text-gray-400 hover:text-white hover:bg-red-600 px-2 py-1  tracking-widest transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          HARD DELETE
+                        </button>
+                      )}
+                      {/* 占位保持行高一致 */}
+                      {g.teamsCount > 0 && <div className="h-[18px]"></div>}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -309,13 +353,24 @@ export default function AdminDashboard({ onLogout }) {
         <div className="md:col-span-4">
           <form onSubmit={handleAddGame} className="border-2 border-black bg-white p-6 shadow-[4px_4px_0_0_#000]">
             <h4 className="text-sm font-black  border-b-2 border-black pb-2 mb-4">Register New Game</h4>
-            <div className="mb-6">
+            <div className="mb-4">
               <label className="block text-[10px] font-bold  tracking-widest text-gray-500 mb-2">Game Title</label>
-              <input 
+              <input
                 type="text" required placeholder="e.g. DOTA 2"
                 value={newGameName} onChange={e => setNewGameName(e.target.value)}
                 className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none font-bold transition-colors bg-transparent"
               />
+            </div>
+            <div className="mb-6">
+              <label className="block text-[10px] font-bold  tracking-widest text-gray-500 mb-2">Default Match Type</label>
+              <select
+                value={newGameType}
+                onChange={e => setNewGameType(e.target.value)}
+                className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none font-bold transition-colors bg-transparent"
+              >
+                <option value="H2H">H2H (Head-to-Head 一对一)</option>
+                <option value="LOBBY">Lobby (多人混战)</option>
+              </select>
             </div>
             <button type="submit" className="w-full bg-black text-white py-3 font-bold text-xs  tracking-widest hover:bg-[#660874] transition-colors">
               ADD GAME TO SYSTEM
@@ -333,7 +388,7 @@ export default function AdminDashboard({ onLogout }) {
         .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
       `}</style>
 
-      {/* 左侧极其硬核的黑黄侧边栏 */}
+      {/* 左侧黑黄侧边栏 */}
       <aside className="w-full md:w-64 bg-black text-white flex flex-col border-r-4 border-[#660874] shrink-0 min-h-fit md:min-h-screen sticky top-0 z-20">
         <div className="p-6 border-b border-gray-800 bg-yellow-400 text-black">
           <p className="text-[10px] font-black  tracking-widest mb-1 flex items-center gap-2">
@@ -377,36 +432,64 @@ export default function AdminDashboard({ onLogout }) {
 
       {/* 右侧内容操作区 */}
       <main className="flex-1 overflow-y-auto">
-        {showCreateTournament ? (
-          <CreateTournament
-            onCancel={() => setShowCreateTournament(false)}
-            onSuccess={() => {
-              setShowCreateTournament(false);
-              setActiveTab('TOURNAMENTS');
-              // 刷新赛事列表
-              api.get('/tournaments').then(res => {
-                const list = res.data?.data || [];
-                setTournaments(list.map(t => ({
-                  id: t.TournamentID,
-                  name: t.TournamentName,
-                  game: t.Game?.GameName || '未指定',
-                  status: t.Status,
-                  maxTeams: t.MaxTeamSize,
-                  enrolled: t.CurrentTeams
-                })));
-              }).catch(() => {});
-            }}
-          />
-        ) : (
-          <div className="p-6 md:p-12">
-            <div className="max-w-6xl mx-auto">
-              {activeTab === 'OVERVIEW' && renderOverview()}
-              {activeTab === 'TOURNAMENTS' && renderTournaments()}
-              {activeTab === 'RESULTS' && renderResults()}
-              {activeTab === 'GAMES' && renderGames()}
-            </div>
+        <div className="p-6 md:p-12">
+          <div className="max-w-6xl mx-auto">
+            {activeTab === 'OVERVIEW' && renderOverview()}
+            {activeTab === 'RESULTS' && renderResults()}
+            {activeTab === 'GAMES' && renderGames()}
+            {activeTab === 'TOURNAMENTS' && (
+              <>
+                {showCreateTournament ? (
+                  <CreateTournament
+                    embedded={true}
+                    onCancel={() => setShowCreateTournament(false)}
+                    onSuccess={() => {
+                      setShowCreateTournament(false);
+                      // 刷新赛事列表
+                      api.get('/tournaments').then(res => {
+                        const list = res.data?.data || [];
+                        setTournaments(list.map(t => ({
+                          id: t.TournamentID,
+                          name: t.TournamentName,
+                          game: t.Game?.GameName || '未指定',
+                          status: t.Status,
+                          maxTeams: t.MaxTeamSize,
+                          enrolled: t.CurrentTeams
+                        })));
+                      }).catch(() => {});
+                    }}
+                  />
+                ) : showEditTournament ? (
+                  <TournamentEdit
+                    tournamentId={editingTournamentId}
+                    onCancel={() => {
+                      setShowEditTournament(false);
+                      setEditingTournamentId(null);
+                    }}
+                    onSuccess={() => {
+                      setShowEditTournament(false);
+                      setEditingTournamentId(null);
+                      // 刷新赛事列表
+                      api.get('/tournaments').then(res => {
+                        const list = res.data?.data || [];
+                        setTournaments(list.map(t => ({
+                          id: t.TournamentID,
+                          name: t.TournamentName,
+                          game: t.Game?.GameName || '未指定',
+                          status: t.Status,
+                          maxTeams: t.MaxTeamSize,
+                          enrolled: t.CurrentTeams
+                        })));
+                      }).catch(() => {});
+                    }}
+                  />
+                ) : (
+                  renderTournaments()
+                )}
+              </>
+            )}
           </div>
-        )}
+        </div>
       </main>
 
     </div>

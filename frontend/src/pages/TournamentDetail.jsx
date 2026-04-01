@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert';
 
 export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
   const [data, setData] = useState(null);
@@ -10,7 +11,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [isLoadingTeams, setIsLoadingTeams] = useState(false);
 
-  // 🚀 核心状态：记录哪些卡片被展开了
+  //核心状态：记录哪些卡片被展开了
   const [expandedMatches, setExpandedMatches] = useState({});
 
   useEffect(() => {
@@ -88,7 +89,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
           enrolled.captain === storedUserName
         );
         if (userAlreadyEnrolled) {
-          alert('你已经是本赛事一支参赛队伍的成员，每个选手只能参加一支队伍');
+          showAlert('你已经是本赛事一支参赛队伍的成员，每个选手只能参加一支队伍');
           setShowEnrollModal(false);
           return;
         }
@@ -97,7 +98,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
           !data.enrolledTeams.some(enrolled => enrolled.id === team.TeamID)
         );
         if (availableTeams.length === 0) {
-          alert('你没有可报名该赛事的队伍（需要你是队长且项目匹配且未报名）');
+          showAlert('你没有可报名该赛事的队伍（需要你是队长且项目匹配且未报名）');
           setShowEnrollModal(false);
           return;
         }
@@ -112,13 +113,13 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
 
   const confirmEnroll = async () => {
     if (!selectedTeamId) {
-      alert('请先选择一支队伍');
+      showAlert('请先选择一支队伍');
       return;
     }
     setIsEnrolling(true);
     try {
       await api.post(`/tournaments/${data.id}/signup`, { teamId: selectedTeamId });
-      alert("队伍已成功报名该赛事！");
+      showAlert("队伍已成功报名该赛事！");
       setShowEnrollModal(false);
       const latest = await api.get(`/tournaments/${data.id}`);
       if (latest.data.success) {
@@ -159,7 +160,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
         setData(mapped);
       }
     } catch (error) {
-      alert(error.response?.data?.error || '报名失败');
+      showAlert(error.response?.data?.error || '报名失败');
     } finally {
       setIsEnrolling(false);
     }
@@ -204,7 +205,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
     );
   };
 
-  // 🚀 渲染大厅混战 (包含原地展开逻辑)
+  // 渲染大厅混战 (包含原地展开逻辑)
   const renderLobbyMatch = (match, isExpanded) => {
     const displayCount = isExpanded ? match.participants.length : 3;
     const displayedTeams = match.participants.slice(0, displayCount);
@@ -221,7 +222,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
 
     return (
       <div className="flex flex-col mt-auto">
-        {/* 🚀 展开状态下切换为 3 列网格，未展开时为 1 列 */}
+        {/* 展开状态下切换为 3 列网格，未展开时为 1 列 */}
         <div className={`grid gap-2 mb-3 transition-all duration-500 ${isExpanded ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
           {displayedTeams.map((team, idx) => (
             <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 border border-gray-200 group-hover:border-black transition-colors animate-fade-in">

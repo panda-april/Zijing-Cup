@@ -1,43 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert';
 
-const initialTeam = {
-  id: 'TM999',
-  name: '清华不败之师',
-  game: '三角洲行动',
-  members: [
-    { id: 'ME01', name: 'Captain_A', role: 'CAPTAIN', joinDate: '2026.01.01' },
-    { id: 'ME02', name: 'Member_B', role: 'MEMBER', joinDate: '2026.02.15' },
-    { id: 'ME03', name: 'Sniper_God', role: 'MEMBER', joinDate: '2026.03.10' }
-  ],
-  // 🚀 队伍已报名的赛事 (带详细赛程列表)
-  tournaments: [
-    { 
-      id: 'T001', 
-      name: '2026年春季三角洲迎新赛', 
-      status: 'ONGOING', 
-      nextMatch: '待定档 vs 摸鱼小分队', 
-      isCaptainActionRequired: true,
-      matches: [
-        { id: 'M101', round: '64强赛', opponent: '白银原住民', status: 'FINISHED', result: 'WIN', score: '2 - 0', time: '2026.03.10 18:00' },
-        { id: 'M102', round: '32强赛', opponent: '摸鱼小分队', status: 'PENDING', result: null, score: null, time: '待定 (需我方发起)', pendingAction: 'PROPOSE' },
-      ]
-    },
-    { 
-      id: 'T002', 
-      name: '首届紫荆杯联合电竞锦标赛', 
-      status: 'AWAITING DRAW', 
-      nextMatch: '等待接受约赛', 
-      isCaptainActionRequired: true,
-      matches: [
-        { id: 'M201', round: 'A组小组赛', opponent: 'RushB 小分队', status: 'PENDING', result: null, score: null, time: '2026.04.15 19:00 (对方提议)', pendingAction: 'ACCEPT' },
-      ]
-    }
-  ]
-};
-
-export default function TeamManagement({ teamId: propTeamId, onBack }) {
-  const [myTeam, setMyTeam] = useState(initialTeam);
+export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateMatch }) {
+  const [myTeam, setMyTeam] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [applications, setApplications] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -152,7 +118,7 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
   }, [searchQuery, myTeam, pendingInvites, applications]);
 
   
-  // 🚀 新增状态：控制赛程面版的折叠/展开
+  // 控制赛程面版的折叠/展开
   const [expandedBrackets, setExpandedBrackets] = useState({});
 
   const toggleBracket = (tournamentId) => {
@@ -171,7 +137,7 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
       });
       setApplications(applications.filter(a => a.id !== appId));
     } catch (error) {
-      alert(error.response?.data?.error || '审批失败');
+      showAlert(error.response?.data?.error || '审批失败');
     }
   };
 
@@ -180,7 +146,7 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
       await api.put(`/teams/requests/${appId}`, { action: 'REJECT' });
       setApplications(applications.filter(a => a.id !== appId));
     } catch (error) {
-      alert(error.response?.data?.error || '拒绝失败');
+      showAlert(error.response?.data?.error || '拒绝失败');
     }
   };
 
@@ -192,7 +158,7 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
         members: myTeam.members.filter(m => m.id !== memberId)
       });
     } catch (error) {
-      alert(error.response?.data?.error || '踢人失败');
+      showAlert(error.response?.data?.error || '踢人失败');
     }
   };
 
@@ -204,9 +170,9 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
             ...myTeam,
             members: myTeam.members.filter(m => m.id !== currentUser.id)
           });
-          alert("You have left the team.");
+          showAlert("You have left the team.");
         })
-        .catch((error) => alert(error.response?.data?.error || '退出失败'));
+        .catch((error) => showAlert(error.response?.data?.error || '退出失败'));
     }
   };
 
@@ -214,7 +180,7 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
     if(confirm("DANGER: DISBAND TEAM?")) {
       api.delete(`/teams/${myTeam.id}`)
         .then(() => setMyTeam(null))
-        .catch((error) => alert(error.response?.data?.error || '解散失败'));
+        .catch((error) => showAlert(error.response?.data?.error || '解散失败'));
     }
   };
 
@@ -225,50 +191,15 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
         setPendingInvites([...pendingInvites, { ...user, invitedBy: currentRole }]);
         setSearchQuery('');
       } catch (error) {
-        alert(error.response?.data?.error || '邀请失败');
+        showAlert(error.response?.data?.error || '邀请失败');
       }
     }
   };
 
-  const handleProposeTime = async (matchId) => {
-    const raw = window.prompt('请输入候选时间，英文逗号分隔（例如 2026-04-15 19:00,2026-04-16 20:00）');
-    if (!raw) return;
-    const proposedTimes = raw.split(',').map(s => s.trim()).filter(Boolean);
-    if (proposedTimes.length === 0) return;
-
-    const match = myTeam.tournaments.flatMap(t => t.matches).find(m => m.id === matchId);
-    if (!match) return;
-    try {
-      const detail = await api.get(`/matches/${matchId}`);
-      const participants = detail.data?.data?.MatchParticipations || [];
-      const opponent = participants.find(p => p.TeamID !== myTeam.id);
-      if (!opponent) return alert('未找到对手队伍');
-
-      await api.post(`/matches/${matchId}/proposals`, {
-        initiatorTeamId: myTeam.id,
-        responderTeamId: opponent.TeamID,
-        proposedTimes
-      });
-      alert('约赛提案已发送');
-    } catch (error) {
-      alert(error.response?.data?.error || '发起约赛失败');
-    }
-  };
-
-  const handleAcceptTime = async (matchId) => {
-    try {
-      const listRes = await api.get(`/matches/${matchId}/proposals`);
-      const pending = (listRes.data?.data || []).find(p => p.Status === 'Pending');
-      if (!pending) return alert('暂无待处理提案');
-      const proposedTimes = JSON.parse(pending.ProposedTimes || '[]');
-      if (proposedTimes.length === 0) return alert('提案未携带可选时间');
-
-      const selectedTime = window.prompt(`请输入接受时间（候选: ${proposedTimes.join(' / ')}）`, proposedTimes[0]);
-      if (!selectedTime) return;
-      await api.put(`/match-proposals/${pending.ProposalID}/respond`, { action: 'ACCEPT', selectedTime });
-      alert('已接受约赛时间');
-    } catch (error) {
-      alert(error.response?.data?.error || '处理提案失败');
+  // 跳转到独立约赛页面
+  const navigateToMatch = (matchId) => {
+    if (onNavigateMatch) {
+      onNavigateMatch(matchId);
     }
   };
 
@@ -276,11 +207,11 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
     if (!confirm('确认取消报名该赛事吗？')) return;
     try {
       await api.delete(`/tournaments/${tournamentId}/signup/${myTeam.id}`);
-      alert('已取消报名');
+      showAlert('已取消报名');
       // 重新刷新页面数据
       window.location.reload();
     } catch (error) {
-      alert(error.response?.data?.error || '取消报名失败');
+      showAlert(error.response?.data?.error || '取消报名失败');
     }
   };
 
@@ -449,13 +380,13 @@ export default function TeamManagement({ teamId: propTeamId, onBack }) {
                                 
                                 {/* 待定档且我是队长：展示强力交互按钮 */}
                                 {m.status === 'PENDING' && currentRole === 'CAPTAIN' && m.pendingAction === 'PROPOSE' && (
-                                  <button onClick={() => handleProposeTime(m.id)} className="bg-yellow-400 text-black border-2 border-black px-4 py-2 text-xs font-black  tracking-widest hover:bg-black hover:text-yellow-400 transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5">
+                                  <button onClick={() => navigateToMatch(m.id)} className="bg-yellow-400 text-black border-2 border-black px-4 py-2 text-xs font-black  tracking-widest hover:bg-black hover:text-yellow-400 transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5">
                                     PROPOSE TIME
                                   </button>
                                 )}
 
                                 {m.status === 'PENDING' && currentRole === 'CAPTAIN' && m.pendingAction === 'ACCEPT' && (
-                                  <button onClick={() => handleAcceptTime(m.id)} className="bg-[#660874] text-white border-2 border-black px-4 py-2 text-xs font-black  tracking-widest hover:bg-black hover:text-[#660874] transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5">
+                                  <button onClick={() => navigateToMatch(m.id)} className="bg-[#660874] text-white border-2 border-black px-4 py-2 text-xs font-black  tracking-widest hover:bg-black hover:text-[#660874] transition-colors shadow-[2px_2px_0_0_#000] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5">
                                     REVIEW PROPOSAL
                                   </button>
                                 )}

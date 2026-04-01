@@ -113,6 +113,90 @@ app.post('/api/users/login', async (req, res) => {
   }
 });
 
+// 更新个人信息
+app.put('/api/me/profile', verifyToken, async (req, res) => {
+  const { rank, mainRole, intro, oldPassword, newPassword } = req.body;
+  const userId = req.user.userId;
+  try {
+    // 获取当前用户信息
+    const user = await prisma.user.findUnique({ where: { UserID: userId } });
+    if (!user) throw new Error('用户不存在');
+
+    // 如果要修改密码，必须验证旧密码
+    if (newPassword) {
+      if (!oldPassword) throw new Error('修改密码需要提供原密码');
+      const ok = await bcrypt.compare(oldPassword, user.PasswordHash);
+      if (!ok) throw new Error('原密码错误');
+      if (newPassword.length < 6) throw new Error('新密码长度至少6位');
+    }
+
+    // 准备更新数据
+    const updateData = {
+      Rank: rank !== undefined ? rank : user.Rank,
+      MainRole: mainRole !== undefined ? mainRole : user.MainRole,
+      Intro: intro !== undefined ? intro : user.Intro,
+    };
+
+    // 如果有新密码，更新密码哈希
+    if (newPassword) {
+      updateData.PasswordHash = await bcrypt.hash(newPassword, await bcrypt.genSalt(10));
+    }
+
+    // 更新数据库
+    const updated = await prisma.user.update({
+      where: { UserID: userId },
+      data: updateData
+    });
+
+    const { PasswordHash, ...safe } = updated;
+    return res.json({ success: true, message: '个人信息更新成功', data: safe });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 获取个人信息
+app.get('/api/me/profile', verifyToken, async (req, res) => {
+  const userId = req.user.userId;
+  try {
+    const user = await prisma.user.findUnique({ where: { UserID: userId } });
+    if (!user) throw new Error('用户不存在');
+    const { PasswordHash, ...safe } = user;
+    return res.json({ success: true, data: safe });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 获取当前用户所有通知（按时间倒序）
+app.get('/api/notifications', verifyToken, async (req, res) => {
+  const userId = req.user.userId;
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: { UserID: userId },
+      orderBy: { CreatedAt: 'desc' }
+    });
+    return res.json({ success: true, data: notifications });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 标记通知已读
+app.post('/api/notifications/:id/read', verifyToken, async (req, res) => {
+  const userId = req.user.userId;
+  const notificationId = req.params.id;
+  try {
+    await prisma.notification.update({
+      where: { NotificationID: notificationId },
+      data: { IsRead: true }
+    });
+    return res.json({ success: true, message: '标记已读成功' });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/games', async (req, res) => {
   try {
     const activeOnly = req.query.activeOnly !== 'false';
@@ -372,7 +456,7 @@ app.get('/api/matches/:matchId', verifyToken, async (req, res) => {
       include: {
         Tournament: { include: { Game: true } },
         MatchParticipations: {
-          include: { Team: { select: { TeamID: true, TeamName: true } } },
+          include: { Team: { select: { TeamID: true, TeamName: true, CaptainID: true, Captain: { select: { UserName: true } } } } },
           orderBy: { FinalRank: 'asc' }
         }
       }
@@ -709,6 +793,19 @@ app.get('/api/me/notifications/proposals', verifyToken, async (req, res) => {
       const myParticipation = match.MatchParticipations.find(mp => teamIds.includes(mp.TeamID));
       const oppParticipation = match.MatchParticipations.find(mp => !teamIds.includes(mp.TeamID));
 
+      // 解析 JSON 数组，取出第一个提议时间
+      let firstTime = null;
+      try {
+        if (!p.ProposedTimes) {
+          firstTime = null;
+        } else {
+          const times = JSON.parse(p.ProposedTimes);
+          firstTime = times[0];
+        }
+      } catch(e) {
+        firstTime = null;
+      }
+
       return {
         proposalId: p.ProposalID,
         matchId: match.MatchID,
@@ -717,7 +814,7 @@ app.get('/api/me/notifications/proposals', verifyToken, async (req, res) => {
         roundName: match.MatchName,
         myTeam: myParticipation?.Team?.TeamName || 'Unknown',
         opponentTeam: oppParticipation?.Team?.TeamName || 'Unknown',
-        proposedTime: p.ProposedTime,
+        proposedTime: firstTime,
         isInitiator: p.InitiatorTeamID === (myParticipation?.TeamID || ''),
         createdAt: p.CreatedAt
       };
@@ -865,9 +962,140 @@ app.delete('/api/tournaments/:tournamentId/signup/:teamId', verifyToken, async (
         where: { TournamentID_TeamID: { TournamentID: tournamentId, TeamID: teamId } }
       });
       const currentTeams = await recalcTournamentCurrentTeams(tx, tournamentId);
+
+      // 如果是管理员踢人，记录日志
+      if (req.user.role === 'administrator') {
+        await tx.adminLog.create({
+          data: {
+            AdminID: userId,
+            ActionType: 'ADMIN_KICK_TEAM_FROM_TOURNAMENT',
+            Module: 'Tournament',
+            TargetID: tournamentId,
+            Details: `Admin kicked team ${team.TeamName} (${teamId}) from tournament ${tournament.TournamentName}`
+          }
+        });
+      }
+
       return { tournamentId, teamId, currentTeams };
     });
     return res.json({ success: true, message: '已取消报名', data: result });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 获取赛事参赛名单（用于编辑页面）
+app.get('/api/tournaments/:tournamentId/roster', verifyToken, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    // 获取所有报名的队伍
+    const signUps = await prisma.signUp.findMany({
+      where: { TournamentID: tournamentId },
+      include: {
+        Team: {
+          select: { TeamID: true, TeamName: true, Captain: { select: { UserName: true } } }
+        }
+      }
+    });
+    const teams = signUps.map(s => s.Team);
+    return res.json({ success: true, data: teams });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 管理员搜索可添加的队伍（同一项目下，未报名该赛事的队伍）
+app.get('/api/admin/tournaments/:tournamentId/search-teams', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { query } = req.query;
+    const trimmedQuery = (query || '').trim();
+
+    // 获取赛事信息
+    const tournament = await prisma.tournament.findUnique({
+      where: { TournamentID: tournamentId },
+      select: { GameID: true }
+    });
+    if (!tournament) {
+      return res.status(404).json({ success: false, error: '赛事不存在' });
+    }
+
+    // 获取已报名的队伍ID
+    const signedUp = await prisma.signUp.findMany({
+      where: { TournamentID: tournamentId },
+      select: { TeamID: true }
+    });
+    const signedUpIds = signedUp.map(s => s.TeamID);
+
+    // 搜索队伍：同一项目，不包含已报名，名称包含关键词
+    const teams = await prisma.team.findMany({
+      where: {
+        GameID: tournament.GameID,
+        DisbandedAt: null,
+        TeamID: { notIn: signedUpIds },
+        TeamName: { contains: trimmedQuery }
+      },
+      select: { TeamID: true, TeamName: true, Captain: { select: { UserName: true } } },
+      take: 20,
+      orderBy: { TeamName: 'asc' }
+    });
+
+    return res.json({ success: true, data: teams });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 管理员直接添加队伍到赛事
+app.post('/api/admin/tournaments/:tournamentId/add-team', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+    const { teamId } = req.body;
+
+    const tournament = await prisma.tournament.findUnique({ where: { TournamentID: tournamentId } });
+    if (!tournament) {
+      return res.status(404).json({ success: false, error: '赛事不存在' });
+    }
+
+    const team = await prisma.team.findUnique({ where: { TeamID: teamId } });
+    if (!team) {
+      return res.status(404).json({ success: false, error: '队伍不存在' });
+    }
+
+    // 检查是否已经报名
+    const existing = await prisma.signUp.findUnique({
+      where: { TournamentID_TeamID: { TournamentID: tournamentId, TeamID: teamId } }
+    });
+    if (existing) {
+      return res.status(400).json({ success: false, error: '该队伍已报名' });
+    }
+
+    // 检查是否达到最大队伍数
+    if (tournament.CurrentTeams >= tournament.MaxTeamSize) {
+      return res.status(400).json({ success: false, error: '赛事已达到最大队伍数' });
+    }
+
+    // 添加报名
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.signUp.create({
+        data: { TournamentID: tournamentId, TeamID: teamId }
+      });
+      const currentTeams = await recalcTournamentCurrentTeams(tx, tournamentId);
+      return { currentTeams };
+    });
+
+    // 记录管理员日志
+    await prisma.adminLog.create({
+      data: {
+        AdminID: req.user.userId,
+        ActionType: 'ADMIN_ADD_TEAM_TO_TOURNAMENT',
+        Module: 'Tournament',
+        TargetID: tournamentId,
+        Details: `Admin added team ${team.TeamName} (${teamId}) to tournament ${tournament.TournamentName}`
+      }
+    });
+
+    return res.json({ success: true, message: '添加成功', data: result });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message });
   }
@@ -897,6 +1125,38 @@ app.post('/api/matches/:matchId/proposals', verifyToken, async (req, res) => {
         Message: message || null
       }
     });
+
+    // 给双方队长创建通知
+    const initiatorTeam = await prisma.team.findUnique({ where: { TeamID: initiatorTeamId }, select: { CaptainID: true, TeamName: true } });
+    const responderTeam = await prisma.team.findUnique({ where: { TeamID: responderTeamId }, select: { CaptainID: true, TeamName: true } });
+    const match = await prisma.matchInfo.findUnique({ where: { MatchID: matchId }, select: { MatchName: true } });
+
+    // 发起方：已发送，等待回复 → 自己发的，直接标记已读，不需要红点
+    await prisma.notification.create({
+      data: {
+        UserID: initiatorTeam.CaptainID,
+        TeamID: initiatorTeamId,
+        MatchID: matchId,
+        Type: 'PROPOSAL_SENT',
+        Title: '等待对手回应',
+        Description: `你已向 ${responderTeam.TeamName} 发起约赛 · ${match.MatchName}`,
+        IsRead: true
+      }
+    });
+
+    // 接收方：收到新约赛，等待回应 → 标记未读，红点提示
+    await prisma.notification.create({
+      data: {
+        UserID: responderTeam.CaptainID,
+        TeamID: responderTeamId,
+        MatchID: matchId,
+        Type: 'PROPOSAL_RECEIVED',
+        Title: '新约赛邀请',
+        Description: `${initiatorTeam.TeamName} 向你的队伍发起约赛 · ${match.MatchName}`,
+        IsRead: false
+      }
+    });
+
     return res.status(201).json({ success: true, data: proposal });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message });
@@ -958,6 +1218,24 @@ app.put('/api/match-proposals/:proposalId/respond', verifyToken, async (req, res
           }
         });
       }
+
+      // 如果拒绝了，给发起方队长发通知
+      if (action === 'REJECT') {
+        const initiatorTeam = await tx.team.findUnique({ where: { TeamID: proposal.InitiatorTeamID }, select: { CaptainID: true, TeamName: true } });
+        const match = await tx.matchInfo.findUnique({ where: { MatchID: proposal.MatchID }, select: { MatchName: true } });
+        await tx.notification.create({
+          data: {
+            UserID: initiatorTeam.CaptainID,
+            TeamID: proposal.InitiatorTeamID,
+            MatchID: proposal.MatchID,
+            Type: 'PROPOSAL_REJECTED',
+            Title: '对方拒绝了约赛',
+            Description: `${initiatorTeam.TeamName} · ${match.MatchName} - 对方拒绝了所有时间提议，请重新发起`,
+            IsRead: false
+          }
+        });
+      }
+
       return updated;
     });
 
@@ -994,6 +1272,41 @@ app.put('/api/games/:gameId/deactivate', verifyToken, requireAdmin, async (req, 
       data: { IsActive: typeof isActive === 'boolean' ? isActive : false }
     });
     return res.json({ success: true, data: game });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 彻底删除项目（危险操作）：必须没有关联的队伍或赛事才能删除
+app.delete('/api/games/:gameId', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const { gameId } = req.params;
+
+    // 检查是否有关联的赛事
+    const tournamentCount = await prisma.tournament.count({
+      where: { GameID: gameId }
+    });
+    if (tournamentCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `无法删除：该项目下仍有 ${tournamentCount} 个赛事，请先删除所有赛事`
+      });
+    }
+
+    // 检查是否有关联的队伍
+    const teamCount = await prisma.team.count({
+      where: { GameID: gameId }
+    });
+    if (teamCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `无法删除：该项目下仍有 ${teamCount} 支队伍，请先解散队伍`
+      });
+    }
+
+    // 安全删除
+    await prisma.game.delete({ where: { GameID: gameId } });
+    return res.json({ success: true, message: '项目已彻底删除' });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message });
   }
@@ -1100,6 +1413,26 @@ app.post('/api/tournaments/:tournamentId/matches', verifyToken, requireAdmin, as
             TeamID: teamId
           }))
         });
+
+        // 给每个参赛队伍的队长创建"等待约赛"通知
+        for (const teamId of participants) {
+          const team = await tx.team.findUnique({
+            where: { TeamID: teamId },
+            select: { CaptainID: true, TeamName: true }
+          });
+          if (team) {
+            await tx.notification.create({
+              data: {
+                UserID: team.CaptainID,
+                TeamID: teamId,
+                MatchID: match.MatchID,
+                Type: 'PENDING_MATCH',
+                Title: '等待约赛',
+                Description: `比赛 "${matchName}" - 队伍 "${team.TeamName}" 等待你安排约赛`
+              }
+            });
+          }
+        }
       }
 
       await writeAdminLog(tx, {
@@ -1115,6 +1448,20 @@ app.post('/api/tournaments/:tournamentId/matches', verifyToken, requireAdmin, as
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// 获取赛事下的所有比赛
+app.get('/api/tournaments/:tournamentId/matches', verifyToken, async (req, res) => {
+  const { tournamentId } = req.params;
+  try {
+    const matches = await prisma.matchInfo.findMany({
+      where: { TournamentID: tournamentId },
+      orderBy: { CreatedAt: 'desc' }
+    });
+    return res.json({ success: true, data: matches });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 });
 

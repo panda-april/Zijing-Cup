@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import api from './utils/api'; // 真实接入本地配置好的 Axios 实例
 
+// 引入自定义弹窗组件
+import CustomAlert from './components/CustomAlert';
+import { showAlert } from './components/CustomAlert';
+
 // 引入我们刚刚做好的三个核心页面
 import TeamManagement from './pages/TeamManagement';
 import TeamListSelect from './pages/TeamListSelect';
@@ -8,6 +12,8 @@ import CreateTeam from './pages/CreateTeam';
 import TournamentDetails from './pages/TournamentDetail';
 import AdminConsole from './pages/AdminConsole';
 import MessageCenter from './pages/MessageCenter';
+import ProfileEdit from './pages/ProfileEdit';
+import MatchScheduling from './pages/MatchScheduling';
 
 export default function App() {
   // === 2. 全局交互与鉴权状态 ===
@@ -20,13 +26,24 @@ export default function App() {
   // 用于在点击”赛事详情”时，把 ID 传给详情页
   const [selectedTournamentId, setSelectedTournamentId] = useState(null);
 
+  // 用于约赛页面：保存当前选中的比赛ID
+  const [selectedMatchId, setSelectedMatchId] = useState(null);
+
   // 团队管理相关状态
   const [myTeams, setMyTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
 
   // 登录弹窗状态
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [loginForm, setLoginForm] = useState({ userName: '', password: '' });
+  const [isLoginMode, setIsLoginMode] = useState(true); // true=登录, false=注册
+  const [loginForm, setLoginForm] = useState({
+    userName: '',
+    password: '',
+    confirmPassword: '',
+    rank: '',
+    mainRole: '',
+    intro: ''
+  });
   const [loginError, setLoginError] = useState('');
 
   // === 3. 真实数据状态 ===
@@ -142,7 +159,10 @@ export default function App() {
     e.preventDefault();
     setLoginError('');
     try {
-      const res = await api.post('/users/login', loginForm);
+      const res = await api.post('/users/login', {
+        userName: loginForm.userName,
+        password: loginForm.password
+      });
 
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('userName', res.data.data.UserName);
@@ -151,10 +171,57 @@ export default function App() {
       setIsLoggedIn(true);
       setUserName(res.data.data.UserName);
       setUserRole(res.data.data.UserRole);
-      setShowLoginModal(false); 
+      setShowLoginModal(false);
 
     } catch (err) {
       setLoginError(err.response?.data?.error || '登录失败，请检查网络或账号密码');
+    }
+  };
+
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+
+    // 前端校验
+    if (!loginForm.userName || !loginForm.password) {
+      setLoginError('用户名和密码不能为空');
+      return;
+    }
+    if (loginForm.password !== loginForm.confirmPassword) {
+      setLoginError('两次输入的密码不一致');
+      return;
+    }
+    if (loginForm.password.length < 6) {
+      setLoginError('密码长度至少6位');
+      return;
+    }
+
+    try {
+      await api.post('/users/register', {
+        userName: loginForm.userName,
+        password: loginForm.password,
+        rank: loginForm.rank || null,
+        mainRole: loginForm.mainRole || null,
+        intro: loginForm.intro || null,
+        role: 'audience' // 新注册用户默认为观众
+      });
+
+      // 注册成功，自动登录
+      const res = await api.post('/users/login', {
+        userName: loginForm.userName,
+        password: loginForm.password
+      });
+
+      localStorage.setItem('token', res.data.token);
+      localStorage.setItem('userName', res.data.data.UserName);
+      localStorage.setItem('userRole', res.data.data.UserRole);
+
+      setIsLoggedIn(true);
+      setUserName(res.data.data.UserName);
+      setUserRole(res.data.data.UserRole);
+      setShowLoginModal(false);
+    } catch (error) {
+      setLoginError(error.response?.data?.error || '注册失败，请稍后再试');
     }
   };
 
@@ -177,9 +244,11 @@ export default function App() {
         <button onClick={() => setShowLoginModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-black transition-colors">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="square" d="M6 18L18 6M6 6l12 12"></path></svg>
         </button>
-        <h2 className="text-3xl font-black tracking-tight mb-8">Access<br />Account.</h2>
+        <h2 className="text-3xl font-black tracking-tight mb-8">
+          {isLoginMode ? (<>Access<br />Account.</>) : (<>Create<br />Account.</>)}
+        </h2>
 
-        <form onSubmit={handleLoginSubmit} className="flex flex-col gap-6">
+        <form onSubmit={isLoginMode ? handleLoginSubmit : handleRegisterSubmit} className="flex flex-col gap-6">
           <div>
             <label className="block text-xs font-bold tracking-widest text-gray-500 mb-2">Username</label>
             <input
@@ -196,10 +265,62 @@ export default function App() {
               className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none transition-colors bg-transparent"
             />
           </div>
+          {!isLoginMode && (
+            <>
+              <div>
+                <label className="block text-xs font-bold tracking-widest text-gray-500 mb-2">Confirm Password</label>
+                <input
+                  type="password" required
+                  value={loginForm.confirmPassword} onChange={e => setLoginForm({ ...loginForm, confirmPassword: e.target.value })}
+                  className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none transition-colors bg-transparent"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold tracking-widest text-gray-500 mb-2">Rank / 段位 (可选)</label>
+                  <input
+                    type="text"
+                    value={loginForm.rank} onChange={e => setLoginForm({ ...loginForm, rank: e.target.value })}
+                    className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none font-bold transition-colors bg-transparent"
+                    placeholder="e.g. Diamond"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold tracking-widest text-gray-500 mb-2">Main Role / 主位置 (可选)</label>
+                  <input
+                    type="text"
+                    value={loginForm.mainRole} onChange={e => setLoginForm({ ...loginForm, mainRole: e.target.value })}
+                    className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none font-bold transition-colors bg-transparent"
+                    placeholder="e.g. Carry"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold tracking-widest text-gray-500 mb-2">Introduction / 个人介绍 (可选)</label>
+                <textarea
+                  value={loginForm.intro} onChange={e => setLoginForm({ ...loginForm, intro: e.target.value })}
+                  className="w-full border-b-2 border-gray-200 focus:border-black py-2 outline-none font-bold transition-colors bg-transparent resize-none h-20"
+                  placeholder="简单介绍一下自己..."
+                />
+              </div>
+            </>
+          )}
           {loginError && <p className="text-red-600 text-xs font-bold ">{loginError}</p>}
           <button type="submit" className="mt-4 bg-[#660874] text-white py-4 font-black tracking-widest hover:opacity-90 transition-opacity">
-            Sign In
+            {isLoginMode ? 'Sign In' : 'Create Account'}
           </button>
+          <div className="text-center pt-2 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => {
+                setIsLoginMode(!isLoginMode);
+                setLoginError('');
+              }}
+              className="text-xs font-bold text-gray-500 hover:text-black transition-colors tracking-widest"
+            >
+              {isLoginMode ? 'Don\'t have an account? → Create one' : 'Already have an account? → Sign In'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
@@ -449,7 +570,10 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <button onClick={() => setShowLoginModal(true)} className="bg-black text-white px-5 py-2 font-bold tracking-widest text-xs hover:bg-[#660874] transition-colors">
+              <button onClick={() => {
+                setIsLoginMode(true);
+                setShowLoginModal(true);
+              }} className="bg-black text-white px-5 py-2 font-bold tracking-widest text-xs hover:bg-[#660874] transition-colors">
                 SIGN IN
               </button>
             )}
@@ -519,6 +643,16 @@ export default function App() {
                 </button>
               </>
             )}
+            {/* 个人信息编辑 - 对所有登录用户可见 */}
+            <button
+              onClick={() => {
+                setActiveTab('PROFILE_EDIT');
+                setIsSidebarOpen(false);
+              }}
+              className="text-left py-3 text-lg font-bold  tracking-wider hover:pl-2 hover:text-[#660874] text-gray-500 transition-all"
+            >
+              个人信息
+            </button>
           </div>
           <div className="mt-auto border-t border-black pt-6">
             <button onClick={handleLogout} className="w-full text-left py-2 font-bold tracking-widest text-red-600 hover:bg-red-50 transition-colors">Logout</button>
@@ -528,7 +662,7 @@ export default function App() {
 
       {/* 🚀 主内容路由区，取消了全屏页面的边距限制 */}
       <main className={
-        ['TEAM_MANAGEMENT', 'CREATE_TEAM', 'TOURNAMENT_DETAILS', 'ADMIN_CONSOLE', 'MESSAGE_CENTER'].includes(activeTab)
+        ['TEAM_MANAGEMENT', 'CREATE_TEAM', 'TOURNAMENT_DETAILS', 'ADMIN_CONSOLE', 'MESSAGE_CENTER', 'PROFILE_EDIT', 'MATCH_SCHEDULING'].includes(activeTab)
           ? 'w-full'
           : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12'
       }>
@@ -554,12 +688,33 @@ export default function App() {
           <TeamManagement
             teamId={selectedTeamId}
             onBack={() => setSelectedTeamId(null)}
+            onNavigateMatch={(matchId) => {
+              setSelectedMatchId(matchId);
+              setActiveTab('MATCH_SCHEDULING');
+            }}
           />
         )}
         {activeTab === 'CREATE_TEAM' && (
           <CreateTeam
             onCancel={() => setActiveTab('TEAMS')}
-            onSuccess={() => { fetchPublicData(); setActiveTab('TEAM_MANAGEMENT'); }}
+            onSuccess={async () => {
+              fetchPublicData();
+              // 重新加载用户自己的团队列表
+              try {
+                const res = await api.get('/me/team-dashboard');
+                if (res.data.success) {
+                  const teamsData = res.data.data || [];
+                  setMyTeams(teamsData);
+                  if (teamsData.length === 1) {
+                    const teamId = teamsData[0].Team?.TeamID || teamsData[0].TeamID;
+                    setSelectedTeamId(teamId);
+                  }
+                }
+              } catch (err) {
+                console.error('获取团队列表失败:', err);
+              }
+              setActiveTab('TEAM_MANAGEMENT');
+            }}
           />
         )}
         {activeTab === 'TOURNAMENT_DETAILS' && (
@@ -569,8 +724,23 @@ export default function App() {
           />
         )}
         {activeTab === 'ADMIN_CONSOLE' && <AdminConsole />}
-        {activeTab === 'MESSAGE_CENTER' && <MessageCenter onBack={() => setActiveTab('DASHBOARD')} />}
+        {activeTab === 'MESSAGE_CENTER' && <MessageCenter
+          onBack={() => setActiveTab('DASHBOARD')}
+          onNavigateMatch={(matchId) => {
+            setSelectedMatchId(matchId);
+            setActiveTab('MATCH_SCHEDULING');
+          }}
+        />}
+        {activeTab === 'PROFILE_EDIT' && <ProfileEdit onBack={() => setActiveTab('DASHBOARD')} />}
+        {activeTab === 'MATCH_SCHEDULING' && <MatchScheduling
+          matchId={selectedMatchId}
+          onBack={() => {
+            setSelectedMatchId(null);
+            setActiveTab('MESSAGE_CENTER');
+          }}
+        />}
       </main>
+      <CustomAlert />
     </div>
   );
 }

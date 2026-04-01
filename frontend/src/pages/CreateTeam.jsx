@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import api from '../utils/api'; //
+import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert'; //
 
 export default function CreateTeam({ onCancel, onSuccess }) {
   // === 1. 真实数据状态 ===
@@ -104,7 +105,7 @@ export default function CreateTeam({ onCancel, onSuccess }) {
   // === 7. 提交建队 (核心真实调用) ===
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name) return alert('请输入队伍代号');
+    if (!formData.name) return showAlert('请输入队伍代号');
     
     setIsSubmitting(true);
 
@@ -120,11 +121,11 @@ export default function CreateTeam({ onCancel, onSuccess }) {
       const res = await api.post('/teams', payload);
       
       if (res.data.success) {
-        alert(`队伍 [${formData.name}] 组建成功！`);
+        showAlert(`队伍 [${formData.name}] 组建成功！`);
         if (onSuccess) onSuccess(); // 通知父组件跳转回大厅或管理页
       }
     } catch (error) {
-      alert(error.response?.data?.error || "建队失败，请检查网络");
+      showAlert(error.response?.data?.error || "建队失败，请检查网络");
     } finally {
       setIsSubmitting(false);
     }

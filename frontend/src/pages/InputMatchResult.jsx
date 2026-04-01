@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert';
 
 export default function InputMatchResult({ matchId, onCancel, onSuccess }) {
   const [matchData, setMatchData] = useState(null);
@@ -77,7 +78,7 @@ export default function InputMatchResult({ matchId, onCancel, onSuccess }) {
     // 基础校验
     if (matchData.type === 'H2H') {
       const hasWinner = Object.values(results).some(r => r.isWinner);
-      if (!hasWinner) return alert("必须明确指定一支胜出队伍！");
+      if (!hasWinner) return showAlert("必须明确指定一支胜出队伍！");
     }
 
     setIsSubmitting(true);
@@ -90,10 +91,10 @@ export default function InputMatchResult({ matchId, onCancel, onSuccess }) {
     };
     try {
       await api.post(`/matches/${matchData.id}/results`, payload);
-      alert(`比赛 [${matchData.id}] 成绩已锁定，积分榜已更新！`);
+      showAlert(`比赛 [${matchData.id}] 成绩已锁定，积分榜已更新！`);
       if (onSuccess) onSuccess();
     } catch (error) {
-      alert(error.response?.data?.error || '赛果提交失败，请稍后重试');
+      showAlert(error.response?.data?.error || '赛果提交失败，请稍后重试');
     } finally {
       setIsSubmitting(false);
     }

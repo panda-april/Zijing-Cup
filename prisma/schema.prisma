@@ -20,11 +20,12 @@ model User {
   Rank         String?    // 段位，例如 "钻石", "大地球"
   MainRole     String?    // 主玩位置，例如 "中单", "突破手"
   Intro        String?    // 个人简介
-  
+
   // 关联属性
   LedTeams Team[]     @relation("TeamCaptain") // 作为队长带领的队伍
   UserTeams UserTeam[] // 作为队员参与的关联
   AdminLogs AdminLog[] // 作为管理员操作的日志
+  Notifications Notification[] // 系统通知
 
   TeamRequests      TeamRequest[] @relation("TargetUser")
   InitiatedRequests TeamRequest[] @relation("InitiatorUser")
@@ -209,7 +210,23 @@ model TeamRequest {
   
   // 附加留言（例如："我打狙很强，求拉！" 或 "队友推荐的"）
   Message     String?
-  
+
   CreatedAt   DateTime @default(now())
   Handler     User?    @relation("HandledByUser", fields: [HandledBy], references: [UserID], onDelete: SetNull)
+}
+
+// 系统通知表 - 用于约赛提醒、申请提醒等
+model Notification {
+  NotificationID String    @id @default(uuid())
+  UserID       String    // 通知接收人（用户ID）
+  TeamID       String?   // 关联队伍（可为空）
+  MatchID      String?   // 关联比赛（可为空）
+  Type         String    // 通知类型: PENDING_MATCH / PROPOSAL_SENT / PROPOSAL_RECEIVED / PROPOSAL_REJECTED / TEAM_REQUEST
+  Title        String    // 通知标题
+  Description  String?   // 通知描述
+  IsRead       Boolean   @default(false) // 是否已读 → 未读显示红点
+  CreatedAt    DateTime  @default(now())
+
+  // 关联
+  User         User      @relation(fields: [UserID], references: [UserID], onDelete: Cascade)
 }

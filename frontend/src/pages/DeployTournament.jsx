@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert';
 
 const FORMATS = ['单败淘汰赛 (BO1)', '单败淘汰赛 (BO3)', '双败淘汰赛', '大厅积分突围赛', '小组单循环赛'];
 const PRESET_SIZES = [8, 16, 32, 64];
 
-export default function CreateTournament({ onCancel, onSuccess }) {
+export default function CreateTournament({ onCancel, onSuccess, embedded = false }) {
   const [games, setGames] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
@@ -37,8 +38,8 @@ export default function CreateTournament({ onCancel, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name) return alert("赛事名称不能为空");
-    if (!formData.gameId) return alert("请先选择项目");
+    if (!formData.name) return showAlert("赛事名称不能为空");
+    if (!formData.gameId) return showAlert("请先选择项目");
     
     setIsSubmitting(true);
 
@@ -52,24 +53,24 @@ export default function CreateTournament({ onCancel, onSuccess }) {
         description: formData.description,
         status: 'REGISTRATION'
       });
-      alert(`赛事 [${formData.name}] 部署成功，已向全站广播！`);
+      showAlert(`赛事 [${formData.name}] 部署成功`);
       if (onSuccess) onSuccess();
     } catch (error) {
-      alert(error.response?.data?.error || '赛事部署失败，请稍后再试');
+      showAlert(error.response?.data?.error || '赛事部署失败，请稍后再试');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-full bg-gray-100 text-gray-900 font-sans p-6 md:p-12 selection:bg-black selection:text-yellow-300 pb-32">
+    <div className={`${embedded ? '' : 'min-h-full'} selection:bg-black selection:text-yellow-300 pb-32`}>
       <style>{`
         @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}</style>
 
-      <div className="max-w-6xl mx-auto animate-slide-in">
-        
+      <div className={`${embedded ? '' : 'max-w-6xl mx-auto'} animate-slide-in`}>
+ 
         {/* === 顶部控制台头部 === */}
         <div className="border-b-4 border-black pb-6 mb-10 flex flex-col md:flex-row justify-between md:items-end gap-6">
           <div>
@@ -212,7 +213,7 @@ export default function CreateTournament({ onCancel, onSuccess }) {
           </section>
 
           {/* ========================================== */}
-          {/* 右侧：奖金、规则与终极发布 */}
+          {/* 右侧：奖金、规则与最终发布 */}
           {/* ========================================== */}
           <aside className="lg:col-span-5 space-y-8 flex flex-col">
             

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import api from '../utils/api';
+import { showAlert } from '../components/CustomAlert';
 
 export default function CreateMatch({
   tournamentId = null,
@@ -7,7 +8,8 @@ export default function CreateMatch({
   enrolledTeams = [],
   matchToEdit = null, // 🚀 传入这个对象即代表进入”编辑模式”
   onCancel,
-  onSuccess
+  onSuccess,
+  embedded = false // 是否被嵌入在其他页面内部（去掉外层padding和bg）
 }) {
   // 根据是否为编辑模式初始化表单
   const [formData, setFormData] = useState({
@@ -47,8 +49,8 @@ export default function CreateMatch({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.round) return alert("请填写比赛轮次！");
-    if (!tournamentId && !isEditMode) return alert('缺少 tournamentId，无法创建比赛');
+    if (!formData.round) return showAlert("请填写比赛轮次！");
+    if (!tournamentId && !isEditMode) return showAlert('缺少 tournamentId，无法创建比赛');
 
     setIsSubmitting(true);
     try {
@@ -66,10 +68,10 @@ export default function CreateMatch({
           participants: selectedTeams
         });
       }
-      alert(`${isEditMode ? '修改' : '新比赛'} [${formData.round}] ${isEditMode ? '已保存！' : '部署成功！'}`);
+      showAlert(`${isEditMode ? '修改' : '新比赛'} [${formData.round}] ${isEditMode ? '已保存！' : '部署成功！'}`);
       if (onSuccess) onSuccess();
     } catch (error) {
-      alert(error.response?.data?.error || `${isEditMode ? '修改' : '部署'}比赛失败`);
+      showAlert(error.response?.data?.error || `${isEditMode ? '修改' : '部署'}比赛失败`);
     } finally {
       setIsSubmitting(false);
     }
@@ -82,14 +84,14 @@ export default function CreateMatch({
   };
 
   return (
-    <div className="min-h-full bg-gray-100 text-gray-900 font-sans p-6 md:p-12 selection:bg-black selection:text-yellow-300 pb-32">
+    <div className={`${embedded ? '' : 'min-h-full bg-gray-100'} text-gray-900 font-sans ${embedded ? '' : 'p-6 md:p-12'} selection:bg-black selection:text-yellow-300 pb-32`}>
       <style>{`
         @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}</style>
 
-      <div className="max-w-6xl mx-auto animate-slide-in">
-        
+      <div className={`${embedded ? '' : 'max-w-6xl mx-auto'} animate-slide-in`}>
+ 
         {/* === 顶部头部 === */}
         <div className="border-b-4 border-black pb-6 mb-10 flex flex-col md:flex-row justify-between md:items-end gap-6">
           <div>
