@@ -37,7 +37,7 @@ export default function LoginModal() {
     e.preventDefault();
     try {
       await login(loginForm.userName, loginForm.password);
-    } catch (err) {
+    } catch {
       // loginError is set by AuthContext
     }
   };
@@ -46,7 +46,7 @@ export default function LoginModal() {
     e.preventDefault();
     try {
       await register(loginForm);
-    } catch (err) {
+    } catch {
       // loginError is set by AuthContext (register may throw from auto-login)
     }
   };
