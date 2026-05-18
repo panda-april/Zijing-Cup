@@ -3,7 +3,7 @@ import axios from 'axios';
 // 1. 创建一个专属的 Axios 实例
 const api = axios.create({
   // 把你的后端主地址写在这里，以后发请求就不需要写那一长串 http://... 了
-  baseURL: 'http://localhost:3000/api', 
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
   timeout: 10000, // 10秒超时机制，防卡死
 });
 
