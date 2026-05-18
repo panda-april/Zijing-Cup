@@ -29,6 +29,7 @@ export default function Navbar() {
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('sidebar:toggle'))}
                 className="p-1 hover:text-[#660874] hover:bg-gray-50 transition-colors"
+                aria-label="打开菜单"
               >
                 <svg className="w-6 h-6 text-current" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="square" d="M3 6h18M3 12h18M3 18h18"></path>

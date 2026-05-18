@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 
 export default function LoginModal() {
@@ -14,6 +14,23 @@ export default function LoginModal() {
     updateLoginForm,
   } = useAuth();
 
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    if (!showLoginModal) return;
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') closeLogin();
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    // Focus the first input when modal opens
+    const firstInput = dialogRef.current?.querySelector('input');
+    if (firstInput) firstInput.focus();
+
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [showLoginModal, closeLogin]);
+
   if (!showLoginModal) return null;
 
   const handleLogin = async (e) => {
@@ -27,13 +44,17 @@ export default function LoginModal() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    await register(loginForm);
+    try {
+      await register(loginForm);
+    } catch (err) {
+      // loginError is set by AuthContext (register may throw from auto-login)
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-sm animate-fade-in">
-      <div className="bg-white border-2 border-black w-full max-w-md p-8 shadow-2xl relative">
-        <button onClick={closeLogin} className="absolute top-4 right-4 text-gray-400 hover:text-black transition-colors">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={isLoginMode ? '登录' : '注册'}>
+      <div ref={dialogRef} className="bg-white border-2 border-black w-full max-w-md p-8 shadow-2xl relative">
+        <button onClick={closeLogin} className="absolute top-4 right-4 text-gray-400 hover:text-black transition-colors" aria-label="关闭登录窗口">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
             <path strokeLinecap="square" d="M6 18L18 6M6 6l12 12"></path>
           </svg>

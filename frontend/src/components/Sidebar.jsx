@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import api from '../utils/api';
@@ -7,6 +7,7 @@ export default function Sidebar() {
   const { userName, userRole, logout } = useAuth();
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const [teamLoading, setTeamLoading] = useState(false);
 
   useEffect(() => {
     const handler = () => setIsOpen((prev) => !prev);
@@ -20,6 +21,7 @@ export default function Sidebar() {
   };
 
   const handleTeamManagement = async () => {
+    setTeamLoading(true);
     try {
       const res = await api.get('/me/team-dashboard');
       if (res.data.success) {
@@ -34,6 +36,8 @@ export default function Sidebar() {
     } catch (err) {
       console.error('获取团队列表失败:', err);
       closeAndGo('/teams/manage');
+    } finally {
+      setTeamLoading(false);
     }
   };
 
@@ -62,7 +66,7 @@ export default function Sidebar() {
               <p className="text-[10px] text-gray-500 font-bold tracking-widest mb-1">Account</p>
               <p className="text-xl font-black">{userName}</p>
             </div>
-            <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-black transition-colors">
+            <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-black transition-colors" aria-label="关闭菜单">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="square" d="M6 18L18 6M6 6l12 12"></path>
               </svg>
@@ -83,7 +87,7 @@ export default function Sidebar() {
                   onClick={handleTeamManagement}
                   className="text-left py-3 text-lg font-bold tracking-wider hover:pl-2 hover:text-[#660874] text-gray-500 transition-all"
                 >
-                  团队管理
+                  {teamLoading ? '加载中...' : '团队管理'}
                 </button>
                 <button
                   onClick={() => closeAndGo('/messages')}
