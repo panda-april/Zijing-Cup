@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../utils/api';
 
 const AuthContext = createContext(null);
@@ -75,14 +75,19 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    await api.post('/users/register', {
-      userName: formData.userName,
-      password: formData.password,
-      rank: formData.rank || null,
-      mainRole: formData.mainRole || null,
-      intro: formData.intro || null,
-      role: 'audience',
-    });
+    try {
+      await api.post('/users/register', {
+        userName: formData.userName,
+        password: formData.password,
+        rank: formData.rank || null,
+        mainRole: formData.mainRole || null,
+        intro: formData.intro || null,
+        role: 'audience',
+      });
+    } catch (err) {
+      setLoginError(err.response?.data?.error || '注册失败，请稍后再试');
+      return;
+    }
 
     await login(formData.userName, formData.password);
   }, [login]);
@@ -116,7 +121,7 @@ export function AuthProvider({ children }) {
     setLoginForm((prev) => ({ ...prev, ...partial }));
   }, []);
 
-  const value = {
+  const value = useMemo(() => ({
     isLoggedIn,
     userName,
     userRole,
@@ -131,7 +136,7 @@ export function AuthProvider({ children }) {
     closeLogin,
     toggleLoginMode,
     updateLoginForm,
-  };
+  }), [isLoggedIn, userName, userRole, showLoginModal, isLoginMode, loginForm, loginError, login, register, logout, openLogin, closeLogin, toggleLoginMode, updateLoginForm]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
