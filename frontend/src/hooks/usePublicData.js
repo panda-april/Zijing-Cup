@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import api from '../utils/api';
 
 export function usePublicData() {
@@ -10,18 +10,21 @@ export function usePublicData() {
   const [gameFilters, setGameFilters] = useState(['ALL']);
   const [historyFilter, setHistoryFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const fetchedRef = useRef(false);
+  const fetchIdRef = useRef(0);
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (signal) => {
     setLoading(true);
+    setError(null);
     try {
       const [tourRes, teamRes, recentRes, upcomingRes, gamesRes] =
         await Promise.allSettled([
-          api.get('/tournaments'),
-          api.get('/teams'),
-          api.get('/matches/recent'),
-          api.get('/matches/upcoming'),
-          api.get('/games'),
+          api.get('/tournaments', { signal }),
+          api.get('/teams', { signal }),
+          api.get('/matches/recent', { signal }),
+          api.get('/matches/upcoming', { signal }),
+          api.get('/games', { signal }),
         ]);
 
       if (tourRes.status === 'fulfilled' && tourRes.value.data?.success) {
@@ -40,7 +43,10 @@ export function usePublicData() {
         setGameFilters(['ALL', ...gamesRes.value.data.data.map((g) => g.GameName)]);
       }
     } catch (error) {
-      console.error('[usePublicData] fetch failed:', error);
+      if (error?.name !== 'CanceledError' && error?.code !== 'ERR_CANCELED') {
+        console.error('[usePublicData] fetch failed:', error);
+        setError('加载数据失败，请检查网络连接');
+      }
     } finally {
       setLoading(false);
     }
@@ -48,26 +54,32 @@ export function usePublicData() {
 
   const fetchHistory = useCallback(async (gameFilter = 'ALL') => {
     setHistoryFilter(gameFilter);
+    const fetchId = ++fetchIdRef.current;
     try {
       const query = gameFilter !== 'ALL' ? `?game=${encodeURIComponent(gameFilter)}` : '';
       const res = await api.get(`/matches/history${query}`);
+      if (fetchId !== fetchIdRef.current) return;
       if (res.data.success) {
         setHistoryMatches(res.data.data);
       }
     } catch (error) {
+      if (fetchId !== fetchIdRef.current) return;
       console.error('获取历史战绩失败:', error);
+      setError('加载历史战绩失败');
     }
   }, []);
 
-  // Initial fetch on mount
+  // Initial fetch on mount with abort on unmount
   useEffect(() => {
     if (!fetchedRef.current) {
       fetchedRef.current = true;
-      fetchAll();
+      const controller = new AbortController();
+      fetchAll(controller.signal);
+      return () => controller.abort();
     }
   }, [fetchAll]);
 
-  return {
+  return useMemo(() => ({
     tournaments,
     teams,
     recentMatches,
@@ -76,7 +88,8 @@ export function usePublicData() {
     gameFilters,
     historyFilter,
     loading,
+    error,
     refreshAll: fetchAll,
     fetchHistory,
-  };
+  }), [tournaments, teams, recentMatches, upcomingMatches, historyMatches, gameFilters, historyFilter, loading, error, fetchAll, fetchHistory]);
 }
