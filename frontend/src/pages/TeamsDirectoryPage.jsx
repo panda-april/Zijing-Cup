@@ -5,7 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 
 export default function TeamsDirectoryPage() {
   const navigate = useNavigate();
-  const { teams, gameFilters } = usePublicData();
+  const { teams, gameFilters, loading, error } = usePublicData();
   const { isLoggedIn } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
@@ -20,6 +20,14 @@ export default function TeamsDirectoryPage() {
       (t.Game?.GameName || '未指定') === activeFilter;
     return matchesSearch && matchesGame;
   });
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <p className="text-center py-20 text-gray-400 font-bold tracking-widest">LOADING...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

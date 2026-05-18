@@ -4,12 +4,20 @@ import { usePublicData } from '../hooks/usePublicData';
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { tournaments, recentMatches, upcomingMatches, loading } = usePublicData();
+  const { tournaments, recentMatches, upcomingMatches, loading, error } = usePublicData();
 
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <p className="text-center py-20 text-gray-400 font-bold tracking-widest">LOADING...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <p className="text-center py-20 text-red-600 font-bold">{error}</p>
       </div>
     );
   }

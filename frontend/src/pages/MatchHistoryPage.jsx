@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { usePublicData } from '../hooks/usePublicData';
 
 export default function MatchHistoryPage() {
-  const { historyMatches, gameFilters, historyFilter, fetchHistory } = usePublicData();
+  const navigate = useNavigate();
+  const { historyMatches, gameFilters, historyFilter, loading, error, fetchHistory } = usePublicData();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -19,6 +21,22 @@ export default function MatchHistoryPage() {
       h.tournament.toLowerCase().includes(q)
     );
   });
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <p className="text-center py-20 text-gray-400 font-bold tracking-widest">LOADING...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <p className="text-center py-20 text-red-600 font-bold">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -71,7 +89,10 @@ export default function MatchHistoryPage() {
           </div>
         </div>
         <div className="border-t border-black">
-          {filtered.map((h) => (
+          {filtered.length === 0 ? (
+            <div className="py-20 text-center text-gray-400 font-medium tracking-widest">No Matches Found.</div>
+          ) : (
+            filtered.map((h) => (
             <div key={h.id} className="border-b border-gray-100 py-8 group hover:bg-gray-50 transition-colors px-2">
               <div className="text-[10px] font-bold text-gray-400 mb-4 space-x-2">
                 <span className="text-black border border-black px-1">{h.game}</span>
@@ -93,7 +114,8 @@ export default function MatchHistoryPage() {
                 </span>
               </div>
             </div>
-          ))}
+          )))
+          )}
         </div>
       </div>
     </div>
