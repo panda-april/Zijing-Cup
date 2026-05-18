@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
 // 通知类型文字映射
 const NOTIFICATION_TITLES = {
@@ -12,8 +13,10 @@ const NOTIFICATION_TITLES = {
 };
 
 export default function MessageCenter({ onBack, onNavigateMatch }) {
+  const { showAlert } = useAlerts();
+  const navigate = useNavigate();
   const [pendingRequests, setPendingRequests] = useState([]);
-  const [pendingProposals, setPendingProposals] = useState([]);
+  const [upcomingMatches, setUpcomingMatches] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -21,18 +24,18 @@ export default function MessageCenter({ onBack, onNavigateMatch }) {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        // 获取所有待处理的通知 + 系统通知
-        const [reqRes, propRes, notifRes] = await Promise.allSettled([
+        // 获取所有待处理的通知 + 系统通知 + 即将参赛比赛
+        const [reqRes, matchRes, notifRes] = await Promise.allSettled([
           api.get('/me/notifications/requests'),
-          api.get('/me/notifications/proposals'),
+          api.get('/me/upcoming-matches'),
           api.get('/notifications')
         ]);
 
         if (reqRes.status === 'fulfilled' && reqRes.value.data.success) {
           setPendingRequests(reqRes.value.data.data || []);
         }
-        if (propRes.status === 'fulfilled' && propRes.value.data.success) {
-          setPendingProposals(propRes.value.data.data || []);
+        if (matchRes.status === 'fulfilled' && matchRes.value.data.success) {
+          setUpcomingMatches(matchRes.value.data.data || []);
         }
         if (notifRes.status === 'fulfilled' && notifRes.value.data.success) {
           setNotifications(notifRes.value.data.data || []);
@@ -63,7 +66,6 @@ export default function MessageCenter({ onBack, onNavigateMatch }) {
   // 计算总未读数
   const totalUnread =
     pendingRequests.length +
-    pendingProposals.length +
     notifications.filter(n => !n.IsRead).length;
 
   const handleRequestAction = async (requestId, action, teamName, request) => {
@@ -76,23 +78,6 @@ export default function MessageCenter({ onBack, onNavigateMatch }) {
       showAlert(`${action === 'APPROVED' ? (request.type === 'INVITE' ? '接受' : '批准') : '拒绝'}成功`);
     } catch (err) {
       console.error('处理申请失败:', err);
-      showAlert('处理失败: ' + (err.response?.data?.error || err.message));
-    }
-  };
-
-  const handleProposalAction = async (proposalId, matchId, action, proposedTime) => {
-    try {
-      // 简化处理：直接使用第一个提议时间，用户不需要额外选择
-      let sendTime = action === 'ACCEPTED' ? proposedTime : null;
-      await api.put(`/match-proposals/${proposalId}/respond`, {
-        action: action === 'ACCEPTED' ? 'ACCEPT' : 'REJECT',
-        selectedTime: sendTime
-      });
-      // 刷新列表
-      setPendingProposals(prev => prev.filter(p => p.proposalId !== proposalId));
-      showAlert(`${action === 'ACCEPTED' ? '接受' : '拒绝'}成功`);
-    } catch (err) {
-      console.error('处理提议失败:', err);
       showAlert('处理失败: ' + (err.response?.data?.error || err.message));
     }
   };
@@ -111,6 +96,15 @@ export default function MessageCenter({ onBack, onNavigateMatch }) {
     if (type === 'APPLY' && isInitiator) return '你发起申请';
     if (type === 'APPLY' && !isInitiator) return '待你审批';
     return '';
+  };
+
+  const getOpponentText = (match) => {
+    if (match.opponentTeams.length === 0) return '暂无对手';
+    return match.opponentTeams.map(t => t.teamName).join(', ');
+  };
+
+  const getMyTeamsText = (match) => {
+    return match.myTeams.map(t => t.teamName).join(', ');
   };
 
   if (loading) {
@@ -162,8 +156,12 @@ export default function MessageCenter({ onBack, onNavigateMatch }) {
                   } ${notif.MatchID ? 'cursor-pointer' : ''}`}
                   onClick={() => {
                     if (!notif.IsRead) markAsRead(notif.NotificationID);
-                    if (notif.MatchID && onNavigateMatch) {
-                      onNavigateMatch(notif.MatchID);
+                    if (notif.MatchID) {
+                      if (onNavigateMatch) {
+                        onNavigateMatch(notif.MatchID);
+                      } else {
+                        navigate('/match/' + notif.MatchID);
+                      }
                     }
                   }}
                 >
@@ -253,48 +251,47 @@ export default function MessageCenter({ onBack, onNavigateMatch }) {
           )}
         </div>
 
-        {/* 比赛提议列表 */}
+        {/* 即将参赛列表 */}
         <div>
-          <h3 className="text-xl font-black tracking-tight border-b border-black pb-3 mb-6">比赛安排通知</h3>
-          {pendingProposals.length === 0 ? (
+          <h3 className="text-xl font-black tracking-tight border-b border-black pb-3 mb-6">我的即将参赛</h3>
+          {upcomingMatches.length === 0 ? (
             <div className="py-12 text-center text-gray-400 font-medium tracking-wider">
-              暂无比赛安排通知
+              暂无即将参加的比赛
             </div>
           ) : (
             <div className="border-t border-black">
-              {pendingProposals.map((prop) => (
-                <div key={prop.proposalId} className="border-b border-gray-200 py-6 px-2 hover:bg-gray-50 transition-colors">
+              {upcomingMatches.map((match) => (
+                <div
+                  key={match.matchId}
+                  className="border-b border-gray-200 py-6 px-2 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (onNavigateMatch) onNavigateMatch(match.matchId);
+                    else navigate('/match/' + match.matchId);
+                  }}
+                >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <h4 className="text-xl font-black">{prop.tournamentName}</h4>
+                        <h4 className="text-xl font-black">{match.tournamentName}</h4>
                         <span className="text-[10px] font-bold bg-black text-white px-2 py-0.5">
-                          {prop.roundName}
+                          {match.matchName}
+                        </span>
+                        <span className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5">
+                          待赛果录入
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 mb-2">
-                        {prop.opponentTeam} - 提议时间: {new Date(prop.proposedTime).toLocaleString()}
+                        比赛时间: {new Date(match.matchTime).toLocaleString()}
                       </p>
                       <p className="text-xs text-gray-400 font-bold tracking-wider">
-                        对战队伍: {prop.myTeam} | 发起方: {prop.isInitiator ? '我方' : '对方'}
+                        我的队伍: {getMyTeamsText(match)} | 对手: {getOpponentText(match)}
                       </p>
                     </div>
-                    {!prop.isInitiator && (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleProposalAction(prop.proposalId, prop.matchId, 'ACCEPTED', prop.proposedTime)}
-                          className="bg-black text-white px-4 py-2 text-xs font-bold hover:bg-[#660874] transition-colors"
-                        >
-                          接受
-                        </button>
-                        <button
-                          onClick={() => handleProposalAction(prop.proposalId, prop.matchId, 'REJECTED', prop.proposedTime)}
-                          className="border border-red-500 text-red-500 px-4 py-2 text-xs font-bold hover:bg-red-500 hover:text-white transition-colors"
-                        >
-                          拒绝
-                        </button>
-                      </div>
-                    )}
+                    <div>
+                      <span className="text-[10px] font-bold bg-yellow-400 text-black px-2 py-0.5">
+                        点击查看详情 →
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}

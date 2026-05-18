@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 import CreateTournament from './DeployTournament';
 import TournamentEdit from './TournamentEdit';
+import InputMatchResult from './InputMatchResult';
 
 export default function AdminDashboard({ onLogout }) {
+  const { showAlert, showConfirm } = useAlerts();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('OVERVIEW');
   const [showCreateTournament, setShowCreateTournament] = useState(false);
   const [showEditTournament, setShowEditTournament] = useState(false);
   const [editingTournamentId, setEditingTournamentId] = useState(null);
+  const [inputMatchId, setInputMatchId] = useState(null);
   const [newGameName, setNewGameName] = useState('');
   const [newGameType, setNewGameType] = useState('H2H');
   const [games, setGames] = useState([]);
@@ -21,6 +26,37 @@ export default function AdminDashboard({ onLogout }) {
     activeTournaments: 0,
     pendingMatches: 0
   });
+
+  const loadPendingResults = async () => {
+    try {
+      const tournamentsRes = await api.get('/tournaments');
+      const tournamentList = tournamentsRes.data?.data || [];
+      const pending = [];
+      for (const t of tournamentList) {
+        const detail = await api.get(`/tournaments/${t.TournamentID}`);
+        const matches = detail.data?.data?.MatchInfos || [];
+        matches
+          .filter(m => m.Status !== 'Finished')
+          .forEach(m => {
+            pending.push({
+              id: m.MatchID,
+              tournament: t.TournamentName,
+              round: m.MatchName,
+              type: m.MatchType,
+              teamsCount: m.MatchParticipations?.length || 0,
+              teamA: m.MatchParticipations?.[0]?.Team?.TeamName,
+              teamB: m.MatchParticipations?.[1]?.Team?.TeamName,
+              time: m.MatchTime ? new Date(m.MatchTime).toLocaleString() : '待定'
+            });
+          });
+      }
+      setPendingResults(pending);
+      return pending;
+    } catch (error) {
+      console.error('加载待录入赛果失败:', error);
+      return [];
+    }
+  };
 
   useEffect(() => {
     const loadAdminData = async () => {
@@ -54,26 +90,7 @@ export default function AdminDashboard({ onLogout }) {
           enrolled: t.CurrentTeams
         })));
 
-        const pending = [];
-        for (const t of tournamentList) {
-          const detail = await api.get(`/tournaments/${t.TournamentID}`);
-          const matches = detail.data?.data?.MatchInfos || [];
-          matches
-            .filter(m => m.Status !== 'Finished')
-            .forEach(m => {
-              pending.push({
-                id: m.MatchID,
-                tournament: t.TournamentName,
-                round: m.MatchName,
-                type: m.MatchType,
-                teamsCount: m.MatchParticipations?.length || 0,
-                teamA: m.MatchParticipations?.[0]?.Team?.TeamName,
-                teamB: m.MatchParticipations?.[1]?.Team?.TeamName,
-                time: m.MatchTime ? new Date(m.MatchTime).toLocaleString() : '待定'
-              });
-            });
-        }
-        setPendingResults(pending);
+        const pending = await loadPendingResults();
 
         setAdminLogs(logs.map(l => ({
           id: l.LogID,
@@ -117,7 +134,10 @@ export default function AdminDashboard({ onLogout }) {
 
   // 软停用项目（推荐方式）
   const handleDeactivateGame = async (gameId, gameName) => {
-    if (window.confirm(`WARNING: 确定要停用项目 [${gameName}] 吗？\n项目停用后不会再出现在选择列表中，但数据仍保留在数据库中。`)) {
+    const confirmed = await showConfirm(
+      `WARNING: 确定要停用项目 [${gameName}] 吗？\n项目停用后不会再出现在选择列表中，但数据仍保留在数据库中。`
+    );
+    if (confirmed) {
       try {
         await api.put(`/games/${gameId}/deactivate`, { isActive: false });
         setGames(games.filter(g => g.id !== gameId));
@@ -130,15 +150,20 @@ export default function AdminDashboard({ onLogout }) {
 
   // 彻底删除项目（仅当无关联数据时允许）
   const handleHardDeleteGame = async (gameId, gameName) => {
-    if (window.confirm(`EXTREME DANGER: 确定要彻底删除项目 [${gameName}] 吗？\n此操作不可恢复！\n确认：该项目下没有队伍和赛事，删除只是为了清理手滑输入的错误数据。`)) {
-      if (!window.confirm(`二次确认：你确定要彻底删除 [${gameName}] 吗？`)) return;
-      try {
-        await api.delete(`/games/${gameId}`);
-        setGames(games.filter(g => g.id !== gameId));
-        showAlert('项目已彻底删除');
-      } catch (error) {
-        showAlert(error.response?.data?.error || '删除失败');
-      }
+    const confirmed = await showConfirm(
+      `EXTREME DANGER: 确定要彻底删除项目 [${gameName}] 吗？\n此操作不可恢复！\n确认：该项目下没有队伍和赛事，删除只是为了清理手滑输入的错误数据。`
+    );
+    if (!confirmed) return;
+    const confirmed2 = await showConfirm(
+      `二次确认：你确定要彻底删除 [${gameName}] 吗？`
+    );
+    if (!confirmed2) return;
+    try {
+      await api.delete(`/games/${gameId}`);
+      setGames(games.filter(g => g.id !== gameId));
+      showAlert('项目已彻底删除');
+    } catch (error) {
+      showAlert(error.response?.data?.error || '删除失败');
     }
   };
 
@@ -147,7 +172,7 @@ export default function AdminDashboard({ onLogout }) {
   };
 
   const handleInputResult = (matchId) => {
-    showAlert(`将打开比赛 [${matchId}] 的赛果录入面版`);
+    setInputMatchId(matchId);
   };
 
   // === 1. 子视图：系统总览 ===
@@ -236,11 +261,6 @@ export default function AdminDashboard({ onLogout }) {
               >
                 EDIT DETAILS
               </button>
-              {t.status !== 'COMPLETED' && (
-                <button className="border-2 border-red-500 text-red-500 px-4 py-2 text-xs font-bold  hover:bg-red-500 hover:text-white transition-colors">
-                  FORCE END
-                </button>
-              )}
             </div>
           </div>
         ))}
@@ -249,51 +269,74 @@ export default function AdminDashboard({ onLogout }) {
   );
 
   // === 3. 子视图：赛果录入 ===
-  const renderResults = () => (
-    <div className="space-y-8 animate-fade-in">
-      <div className="border-b-2 border-black pb-4 mb-6">
-        <h3 className="text-2xl font-black ">Results Operations</h3>
-        <p className="text-xs font-bold text-gray-500  tracking-widest mt-2">Matches awaiting admin confirmation and result input.</p>
-      </div>
+  const renderResults = () => {
+    // 如果已经选择了比赛，直接嵌入渲染录入表单
+    if (inputMatchId) {
+      return (
+        <InputMatchResult
+          matchId={inputMatchId}
+          embedded={true}
+          onCancel={() => {
+            setInputMatchId(null);
+            // 重新加载待录入列表
+            loadPendingResults();
+          }}
+          onSuccess={() => {
+            setInputMatchId(null);
+            // 重新加载待录入列表
+            loadPendingResults();
+          }}
+        />
+      );
+    }
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {pendingResults.map(m => (
-          <div key={m.id} className="border-2 border-black bg-white p-6 relative overflow-hidden flex flex-col">
-            <div className="absolute top-0 left-0 w-1.5 h-full bg-yellow-400"></div>
-            <div className="pl-4 flex-1">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <span className="text-[10px] font-bold bg-black text-white px-2 py-1 ">{m.round}</span>
-                  <p className="text-xs font-bold text-gray-400  mt-2">{m.tournament}</p>
+    // 否则显示待录入列表
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <div className="border-b-2 border-black pb-4 mb-6">
+          <h3 className="text-2xl font-black ">Results Operations</h3>
+          <p className="text-xs font-bold text-gray-500  tracking-widest mt-2">Matches awaiting admin confirmation and result input.</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {pendingResults.map(m => (
+            <div key={m.id} className="border-2 border-black bg-white p-6 relative overflow-hidden flex flex-col">
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-yellow-400"></div>
+              <div className="pl-4 flex-1">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <span className="text-[10px] font-bold bg-black text-white px-2 py-1 ">{m.round}</span>
+                    <p className="text-xs font-bold text-gray-400  mt-2">{m.tournament}</p>
+                  </div>
+                  <span className="text-[10px] font-bold border border-gray-300 px-2 py-1">{m.time}</span>
                 </div>
-                <span className="text-[10px] font-bold border border-gray-300 px-2 py-1">{m.time}</span>
+
+                {m.type === 'LOBBY' ? (
+                  <div className="py-4 text-center border-y border-dashed border-gray-200 my-4">
+                    <p className="text-lg font-black ">MULTI-SQUAD LOBBY</p>
+                    <p className="text-xs font-bold text-gray-500">{m.teamsCount} Squads Participated</p>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center py-4 my-4 border-y border-dashed border-gray-200">
+                    <span className="font-bold  text-lg flex-1 text-right">{m.teamA}</span>
+                    <span className="px-4 text-xs font-bold text-gray-400">VS</span>
+                    <span className="font-bold  text-lg flex-1 text-left">{m.teamB}</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => handleInputResult(m.id)}
+                  className="w-full bg-yellow-300 border-2 border-black text-black py-3 font-black  tracking-widest text-sm hover:bg-black hover:text-white transition-colors"
+                >
+                  INPUT MATCH RESULTS
+                </button>
               </div>
-              
-              {m.type === 'LOBBY' ? (
-                <div className="py-4 text-center border-y border-dashed border-gray-200 my-4">
-                  <p className="text-lg font-black ">MULTI-SQUAD LOBBY</p>
-                  <p className="text-xs font-bold text-gray-500">{m.teamsCount} Squads Participated</p>
-                </div>
-              ) : (
-                <div className="flex justify-between items-center py-4 my-4 border-y border-dashed border-gray-200">
-                  <span className="font-bold  text-lg flex-1 text-right">{m.teamA}</span>
-                  <span className="px-4 text-xs font-bold text-gray-400">VS</span>
-                  <span className="font-bold  text-lg flex-1 text-left">{m.teamB}</span>
-                </div>
-              )}
-
-              <button 
-                onClick={() => handleInputResult(m.id)}
-                className="w-full bg-yellow-300 border-2 border-black text-black py-3 font-black  tracking-widest text-sm hover:bg-black hover:text-white transition-colors"
-              >
-                INPUT MATCH RESULTS
-              </button>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // === 4. 子视图：游戏项目管理 ===
   const renderGames = () => (
@@ -421,8 +464,8 @@ export default function AdminDashboard({ onLogout }) {
         </nav>
 
         <div className="p-6 border-t border-gray-800 mt-auto">
-          <button 
-            onClick={onLogout}
+          <button
+            onClick={onLogout || (() => navigate('/'))}
             className="w-full border-2 border-gray-700 text-gray-400 py-3 font-bold text-xs  tracking-widest hover:border-red-500 hover:text-red-500 hover:bg-red-500/10 transition-colors"
           >
             EXIT TERMINAL

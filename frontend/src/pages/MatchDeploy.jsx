@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
 export default function CreateMatch({
   tournamentId = null,
@@ -11,6 +11,7 @@ export default function CreateMatch({
   onSuccess,
   embedded = false // 是否被嵌入在其他页面内部（去掉外层padding和bg）
 }) {
+  const { showAlert } = useAlerts();
   // 根据是否为编辑模式初始化表单
   const [formData, setFormData] = useState({
     type: matchToEdit?.type || matchToEdit?.MatchType || 'H2H', // H2H (1v1) 或 LOBBY (大厅混战)
@@ -58,7 +59,8 @@ export default function CreateMatch({
         await api.put(`/matches/${matchToEdit.id || matchToEdit.MatchID}`, {
           matchName: formData.round,
           matchType: formData.type,
-          maxTeamAmount: formData.type === 'H2H' ? 2 : selectedTeams.length
+          maxTeamAmount: formData.type === 'H2H' ? 2 : selectedTeams.length,
+          participants: selectedTeams
         });
       } else {
         await api.post(`/tournaments/${tournamentId}/matches`, {

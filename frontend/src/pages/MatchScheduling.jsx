@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
-export default function MatchScheduling({ matchId, onBack }) {
+export default function MatchScheduling({ matchId: propMatchId, onBack }) {
+  const { showAlert } = useAlerts();
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const matchId = propMatchId || id;
   const [loading, setLoading] = useState(true);
   const [match, setMatch] = useState(null);
   const [proposals, setProposals] = useState([]);
@@ -168,7 +173,7 @@ export default function MatchScheduling({ matchId, onBack }) {
         <div className="max-w-4xl mx-auto">
           <div className="bg-red-50 border-2 border-red-200 p-8 text-center">
             <p className="font-bold text-red-600">比赛不存在或已删除</p>
-            <button onClick={onBack} className="mt-4 bg-black text-white px-4 py-2 text-sm font-bold">返回</button>
+            <button onClick={onBack || (() => navigate(-1))} className="mt-4 bg-black text-white px-4 py-2 text-sm font-bold">返回</button>
           </div>
         </div>
       </div>
@@ -186,7 +191,7 @@ export default function MatchScheduling({ matchId, onBack }) {
         {/* 顶部导航 */}
         <div className="flex justify-between items-end border-b-4 border-black pb-4 mb-8">
           <div>
-            <button onClick={onBack} className="text-xs font-bold tracking-widest text-gray-400 hover:text-black transition-colors mb-2 block text-left">
+            <button onClick={onBack || (() => navigate(-1))} className="text-xs font-bold tracking-widest text-gray-400 hover:text-black transition-colors mb-2 block text-left">
               ← BACK
             </button>
             <h1 className="text-4xl font-black tracking-tight">Match Scheduling</h1>

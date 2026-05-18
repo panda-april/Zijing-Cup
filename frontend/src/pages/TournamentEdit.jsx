@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 import MatchDeploy from './MatchDeploy';
 
 const STATUS_OPTIONS = [
@@ -13,6 +13,7 @@ const FORMATS = ['单败淘汰赛 (BO1)', '单败淘汰赛 (BO3)', '双败淘汰
 const PRESET_SIZES = [8, 16, 32, 64];
 
 export default function EditTournament({ tournamentId = 'T002', onCancel, onSuccess }) {
+  const { showAlert, showConfirm, showPrompt } = useAlerts();
   // 核心导航状态
   const [activeTab, setActiveTab] = useState('PARAMETERS'); // PARAMETERS, ROSTER, MATCHES
 
@@ -38,8 +39,9 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
   const [searchResults, setSearchResults] = useState([]);
   // 防抖定时器
   const searchTimeoutRef = React.useRef(null);
-  // 控制新建比赛面板显示
+  // 控制新建/编辑比赛面板显示，editingMatchId=null 表示新建
   const [showMatchDeploy, setShowMatchDeploy] = useState(false);
+  const [editingMatchId, setEditingMatchId] = useState(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -70,7 +72,8 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
             type: m.MatchType,
             time: m.MatchTime,
             status: m.Status,
-            summary: `${(m.MatchParticipations || []).length} 参赛队`
+            summary: `${(m.MatchParticipations || []).length} 参赛队`,
+            MatchParticipations: m.MatchParticipations || []
           })));
         }
       } catch (error) {
@@ -114,7 +117,10 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
   };
 
   const handleKickTeam = async (teamId, teamName) => {
-    if (window.confirm(`DANGER: 确定要将队伍 [${teamName}] 强制踢出本赛事吗？此操作将彻底删除他们的报名记录！`)) {
+    const confirmed = await showConfirm(
+      `DANGER: 确定要将队伍 [${teamName}] 强制踢出本赛事吗？\n此操作将彻底删除他们的报名记录！`
+    );
+    if (confirmed) {
       try {
         await api.delete(`/tournaments/${tournamentId}/signup/${teamId}`);
         setTeams(teams.filter(t => t.id !== teamId));
@@ -148,7 +154,10 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
       showAlert(`赛事已达到最大队伍数限制 (${formData.maxTeams})`);
       return;
     }
-    if (window.confirm(`确定要将队伍 [${teamName}] 添加到本赛事吗？`)) {
+    const confirmed = await showConfirm(
+      `确定要将队伍 [${teamName}] 添加到本赛事吗？`
+    );
+    if (confirmed) {
       try {
         await api.post(`/admin/tournaments/${tournamentId}/add-team`, { teamId });
         // 刷新队伍列表
@@ -170,10 +179,33 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
     }
   };
 
-  const handleDestroyTournament = () => {
-    if (window.confirm(`🔥🔥🔥 EXTREME DANGER: 你即将彻底抹除该赛事的所有数据（含比赛记录、报名数据）！\n请在确认后输入管理员密码... (模拟操作)`)) {
-      showAlert("赛事已从系统中强制抹除。");
+  const handleDestroyTournament = async () => {
+    // 第一步：要求输入赛事名称
+    const confirmName = await showPrompt(
+      `⚠️ 危险操作：彻底删除赛事\n\n此操作不可逆，将会永久删除：\n• 赛事本身\n• 所有比赛安排和结果\n• 所有报名记录\n\n请输入赛事名称 "${formData.name}" 确认删除：`,
+      ''
+    );
+    if (confirmName === null) {
+      // 用户取消
+      return;
+    }
+    if (confirmName !== formData.name) {
+      showAlert("输入名称不匹配，操作已取消。");
+      return;
+    }
+
+    // 第二步：二次确认
+    const confirmed = await showConfirm(
+      `最后一次确认：\n\n真的要彻底删除赛事 "${formData.name}" 吗？\n此操作无法撤销！`
+    );
+    if (!confirmed) return;
+
+    try {
+      await api.delete(`/tournaments/${tournamentId}`);
+      showAlert(`✅ 赛事 "${formData.name}" 已彻底删除`);
       if (onCancel) onCancel();
+    } catch (error) {
+      showAlert(error.response?.data?.error || '删除赛事失败');
     }
   };
 
@@ -182,7 +214,10 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
   };
 
   const handleDeleteMatch = async (matchId) => {
-    if (window.confirm(`确定要删除比赛记录 [${matchId}] 吗？`)) {
+    const confirmed = await showConfirm(
+      `确定要删除比赛记录 [${matchId}] 吗？`
+    );
+    if (confirmed) {
       try {
         await api.delete(`/matches/${matchId}`);
         setMatches(matches.filter(m => m.id !== matchId));
@@ -190,6 +225,13 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
         showAlert(error.response?.data?.error || '删除比赛失败');
       }
     }
+  };
+
+  const handleEditMatch = (matchId) => {
+    // 找到要编辑的比赛现有数据
+    const match = matches.find(m => m.id === matchId);
+    setEditingMatchId(matchId);
+    setShowMatchDeploy(true);
   };
 
   // === 视图渲染 ===
@@ -472,14 +514,21 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
   // 3. 赛程管控视图
   const renderMatches = () => {
     if (showMatchDeploy) {
+      // 如果是编辑模式，找到要编辑的比赛数据传给 MatchDeploy
+      const matchToEdit = editingMatchId
+        ? matches.find(m => m.id === editingMatchId)
+        : null;
+
       return (
         <MatchDeploy
           embedded={true}
           tournamentId={tournamentId}
           tournamentName={formData.name}
           enrolledTeams={teams}
+          matchToEdit={matchToEdit}
           onCancel={async () => {
             setShowMatchDeploy(false);
+            setEditingMatchId(null);
             // 刷新比赛列表
             try {
               const res = await api.get(`/tournaments/${tournamentId}/matches`);
@@ -490,7 +539,8 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
                   type: m.MatchType,
                   time: m.MatchTime,
                   status: m.Status,
-                  summary: `${(m.MatchParticipations || []).length} 参赛队`
+                  summary: `${(m.MatchParticipations || []).length} 参赛队`,
+                  MatchParticipations: m.MatchParticipations || []
                 }));
                 setMatches(newMatches);
               }
@@ -500,6 +550,7 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
           }}
           onSuccess={async () => {
             setShowMatchDeploy(false);
+            setEditingMatchId(null);
             // 刷新比赛列表
             try {
               const res = await api.get(`/tournaments/${tournamentId}/matches`);
@@ -510,7 +561,8 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
                   type: m.MatchType,
                   time: m.MatchTime,
                   status: m.Status,
-                  summary: `${(m.MatchParticipations || []).length} 参赛队`
+                  summary: `${(m.MatchParticipations || []).length} 参赛队`,
+                  MatchParticipations: m.MatchParticipations || []
                 }));
                 setMatches(newMatches);
               }
@@ -571,7 +623,7 @@ export default function EditTournament({ tournamentId = 'T002', onCancel, onSucc
                       </span>
                     </td>
                     <td className="p-4 text-center flex flex-col gap-2">
-                      <button className="text-[10px] font-bold text-gray-400 hover:text-black  tracking-widest transition-colors">EDIT</button>
+                      <button onClick={() => handleEditMatch(m.id)} className="text-[10px] font-bold text-gray-400 hover:text-black  tracking-widest transition-colors">EDIT</button>
                       <button onClick={() => handleDeleteMatch(m.id)} className="text-[10px] font-bold text-gray-400 hover:text-red-600  tracking-widest transition-colors">DELETE</button>
                     </td>
                   </tr>

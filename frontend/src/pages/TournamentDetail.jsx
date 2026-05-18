@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
-export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
+export default function TournamentDetails({ tournamentId: propTournamentId, onBack }) {
+  const { showAlert } = useAlerts();
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const tournamentId = propTournamentId || id || 'T002';
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -269,7 +274,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4">
         <p className="font-black  tracking-widest text-red-500">TOURNAMENT NOT FOUND.</p>
-        <button onClick={onBack} className="text-xs font-bold  tracking-widest text-gray-400 hover:text-black">← GO BACK</button>
+        <button onClick={onBack || (() => navigate('/'))} className="text-xs font-bold  tracking-widest text-gray-400 hover:text-black">← GO BACK</button>
       </div>
     );
   }
@@ -283,7 +288,7 @@ export default function TournamentDetails({ tournamentId = 'T002', onBack }) {
 
       <div className="max-w-7xl mx-auto animate-fade-in">
         
-        <button onClick={onBack} className="text-xs font-bold  tracking-widest text-gray-400 hover:text-black transition-colors mb-8 flex items-center gap-2 group">
+        <button onClick={onBack || (() => navigate('/'))} className="text-xs font-bold  tracking-widest text-gray-400 hover:text-black transition-colors mb-8 flex items-center gap-2 group">
           <svg className="w-4 h-4 transform group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="square" d="M15 19l-7-7 7-7"></path></svg>
           BACK TO DIRECTORY
         </button>

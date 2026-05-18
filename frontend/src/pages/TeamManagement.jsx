@@ -1,14 +1,22 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
 export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateMatch }) {
+  const { showAlert } = useAlerts();
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const teamId = propTeamId || id;
   const [myTeam, setMyTeam] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [applications, setApplications] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingInvites, setPendingInvites] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
+  const [description, setDescription] = useState('');
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
 
   // 计算当前用户在该团队中的角色
   const currentRole = currentUser?.role;
@@ -49,10 +57,12 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
             id: first.TeamID,
             name: first.TeamName,
             game: first.Game?.GameName || '未指定',
+            description: first.Description || '',
             members,
             tournaments: first.TournamentsView || []
           };
           setMyTeam(nextTeam);
+          setDescription(first.Description || '');
 
           // 设置当前用户（从登录信息或第一个成员推断）
           const storedUserName = localStorage.getItem('userName');
@@ -87,7 +97,7 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
       }
     };
     fetchDashboard();
-  }, [propTeamId]);
+  }, [teamId]);
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -196,10 +206,27 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
     }
   };
 
+  const handleSaveDescription = async () => {
+    if (currentRole !== 'CAPTAIN') return;
+    setIsSavingDescription(true);
+    try {
+      await api.put(`/teams/${myTeam.id}`, { Description: description });
+      setMyTeam({ ...myTeam, description });
+      setIsEditingDescription(false);
+      showAlert('队伍简介已保存');
+    } catch (error) {
+      showAlert(error.response?.data?.error || '保存失败');
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
   // 跳转到独立约赛页面
   const navigateToMatch = (matchId) => {
     if (onNavigateMatch) {
       onNavigateMatch(matchId);
+    } else {
+      navigate('/match/' + matchId);
     }
   };
 
@@ -209,7 +236,27 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
       await api.delete(`/tournaments/${tournamentId}/signup/${myTeam.id}`);
       showAlert('已取消报名');
       // 重新刷新页面数据
-      window.location.reload();
+      const res = await api.get('/me/team-dashboard');
+      if (res.data.success) {
+        const teamsData = res.data.data || [];
+        const found = teamsData.find(t => String(t.Team?.TeamID || t.TeamID) === String(teamId));
+        const target = found?.Team || found || teamsData[0]?.Team || teamsData[0];
+        if (target) {
+          setMyTeam({
+            id: target.TeamID,
+            name: target.TeamName,
+            game: target.Game?.GameName || '未指定',
+            description: target.Description || '',
+            members: (target.Members || []).map((m) => ({
+              id: m.User.UserID,
+              name: m.User.UserName,
+              role: m.IsCaptain ? 'CAPTAIN' : 'MEMBER',
+              joinDate: m.JoinedAt
+            })),
+            tournaments: target.TournamentsView || []
+          });
+        }
+      }
     } catch (error) {
       showAlert(error.response?.data?.error || '取消报名失败');
     }
@@ -231,14 +278,12 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
       <div className="max-w-7xl mx-auto animate-fade-in">
         <div className="flex flex-col md:flex-row justify-between md:items-end border-b-4 border-black pb-6 mb-12 gap-6">
           <div>
-            {onBack && (
-              <button
-                onClick={onBack}
+            <button
+                onClick={onBack || (() => navigate('/teams'))}
                 className="mb-2 inline-flex items-center gap-2 text-xs font-bold tracking-widest text-gray-600 border border-gray-300 px-3 py-1 hover:bg-gray-50 transition-colors"
               >
                 ← BACK TO TEAM LIST
               </button>
-            )}
             <div className="flex items-center gap-3 mb-2">
               <span className="bg-black text-white text-[10px] font-bold px-2 py-1  tracking-widest">{myTeam.game}</span>
               <span className="text-[#660874] font-bold text-xs  tracking-widest">● MY TEAM DASHBOARD</span>
@@ -252,8 +297,57 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
           )}
         </div>
 
+        {/* 队伍简介 - 仅队长可编辑 */}
+        {myTeam.description || currentRole === 'CAPTAIN' ? (
+          <div className="mb-10 bg-gray-50 border-2 border-black p-6 shadow-[4px_4px_0_0_#000]">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-black tracking-tight">Team Description</h2>
+              {currentRole === 'CAPTAIN' && !isEditingDescription && (
+                <button
+                  onClick={() => setIsEditingDescription(true)}
+                  className="text-xs font-bold tracking-widest border-2 border-black px-3 py-1 hover:bg-black hover:text-white transition-colors"
+                >
+                  EDIT
+                </button>
+              )}
+            </div>
+            {isEditingDescription ? (
+              <div className="space-y-3">
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="写下你的队伍介绍..."
+                  className="w-full min-h-[100px] p-3 border-2 border-gray-200 focus:border-black outline-none text-sm font-medium resize-none"
+                />
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => {
+                      setDescription(myTeam.description || '');
+                      setIsEditingDescription(false);
+                    }}
+                    className="text-xs font-bold tracking-widest px-4 py-2 border-2 border-gray-300 hover:bg-gray-100 transition-colors"
+                    disabled={isSavingDescription}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={handleSaveDescription}
+                    className="text-xs font-bold tracking-widest px-4 py-2 bg-black text-white border-2 border-black hover:bg-[#660874] transition-colors disabled:opacity-50"
+                    disabled={isSavingDescription}
+                  >
+                    {isSavingDescription ? 'SAVING...' : 'SAVE'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {myTeam.description || '暂无队伍简介'}
+              </p>
+            )}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-16">
-          
           {/* ========================================== */}
           {/* 左侧：队伍名单 & 已报名赛事                  */}
           {/* ========================================== */}

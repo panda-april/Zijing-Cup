@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
 const FORMATS = ['单败淘汰赛 (BO1)', '单败淘汰赛 (BO3)', '双败淘汰赛', '大厅积分突围赛', '小组单循环赛'];
 const PRESET_SIZES = [8, 16, 32, 64];
 
 export default function CreateTournament({ onCancel, onSuccess, embedded = false }) {
+  const { showAlert } = useAlerts();
   const [games, setGames] = useState([]);
   const [formData, setFormData] = useState({
     name: '',

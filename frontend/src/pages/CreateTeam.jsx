@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert'; //
+import { useAlerts } from '../hooks/useAlerts';
 
 export default function CreateTeam({ onCancel, onSuccess }) {
+  const { showAlert } = useAlerts();
+  const navigate = useNavigate();
   // === 1. 真实数据状态 ===
   const [games, setGames] = useState([]);
   const [tournaments, setTournaments] = useState([]); // 存放从后端拉取的真实赛事
@@ -13,6 +16,7 @@ export default function CreateTeam({ onCancel, onSuccess }) {
     name: '',
     game: '',
     tournamentId: '', // 快捷报名赛事
+    description: '', // 队伍简介
   });
 
   // 快捷邀请名单 (建队成功后一并发出邀请)
@@ -112,8 +116,9 @@ export default function CreateTeam({ onCancel, onSuccess }) {
     const payload = {
       TeamName: formData.name,
       GameName: formData.game,
-      TargetTournamentID: formData.tournamentId, 
-      InitialInvites: initialRecruits.map(u => u.UserID) 
+      TargetTournamentID: formData.tournamentId,
+      Description: formData.description || null,
+      InitialInvites: initialRecruits.map(u => u.UserID)
     };
 
     try {
@@ -122,7 +127,8 @@ export default function CreateTeam({ onCancel, onSuccess }) {
       
       if (res.data.success) {
         showAlert(`队伍 [${formData.name}] 组建成功！`);
-        if (onSuccess) onSuccess(); // 通知父组件跳转回大厅或管理页
+        if (onSuccess) onSuccess();
+        else navigate('/teams/manage');
       }
     } catch (error) {
       showAlert(error.response?.data?.error || "建队失败，请检查网络");
@@ -152,8 +158,8 @@ export default function CreateTeam({ onCancel, onSuccess }) {
             <h1 className="text-4xl md:text-5xl font-black tracking-tighter ">Establish Squad.</h1>
           </div>
           
-          <button 
-            onClick={onCancel}
+          <button
+            onClick={onCancel || (() => navigate('/teams'))}
             className="text-xs font-bold  tracking-widest text-gray-400 hover:text-black transition-colors"
           >
             ← ABORT OPERATION
@@ -203,7 +209,21 @@ export default function CreateTeam({ onCancel, onSuccess }) {
               </div>
             </div>
 
-            {/* 3. 快捷报赛 (可选) */}
+            {/* 3. 队伍简介 (可选) */}
+            <div>
+              <label className="block text-sm font-bold  tracking-widest text-gray-500 mb-4 border-b border-gray-200 pb-2 flex justify-between items-end">
+                <span>03. TEAM DESCRIPTION (简介)</span>
+                <span className="text-[10px] bg-gray-100 text-gray-400 px-2 py-0.5">OPTIONAL / 可选</span>
+              </label>
+              <textarea
+                placeholder="介绍一下你的队伍，比如目标风格、成员配置等..."
+                value={formData.description}
+                onChange={e => setFormData({...formData, description: e.target.value})}
+                className="w-full min-h-[100px] p-3 border-2 border-gray-200 focus:border-[#660874] outline-none text-sm font-medium resize-none bg-transparent"
+              />
+            </div>
+
+            {/* 4. 快捷报赛 (可选) */}
             <div>
               <label className="block text-sm font-bold  tracking-widest text-gray-500 mb-4 border-b border-gray-200 pb-2 flex justify-between items-end">
                 <span>03. RAPID DEPLOYMENT (报赛)</span>
@@ -254,7 +274,7 @@ export default function CreateTeam({ onCancel, onSuccess }) {
               <div className="absolute top-0 left-0 w-full h-1 bg-[#660874]"></div>
               
               <h2 className="text-xl font-black tracking-tight  border-b border-gray-300 pb-4 mb-6 flex justify-between items-center">
-                <span>04. Initial Roster</span>
+                <span>05. Initial Roster</span>
                 <span className="text-sm font-bold text-gray-400">{initialRecruits.length}/4</span>
               </h2>
 

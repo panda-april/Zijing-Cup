@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
 export default function ProfileEdit({ onBack }) {
+  const { showAlert } = useAlerts();
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     userName: '',
     rank: '',
@@ -119,7 +122,7 @@ export default function ProfileEdit({ onBack }) {
             <h1 className="text-4xl md:text-5xl font-black tracking-tighter">Edit Profile.</h1>
           </div>
           <button
-            type="button" onClick={onBack}
+            type="button" onClick={onBack || (() => navigate('/'))}
             className="text-xs font-bold tracking-widest text-gray-400 hover:text-black transition-colors"
           >
             ← BACK

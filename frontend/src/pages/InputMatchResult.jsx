@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../utils/api';
-import { showAlert } from '../components/CustomAlert';
+import { useAlerts } from '../hooks/useAlerts';
 
-export default function InputMatchResult({ matchId, onCancel, onSuccess }) {
+export default function InputMatchResult({ matchId, onCancel, onSuccess, embedded = false }) {
+  const { showAlert } = useAlerts();
   const [matchData, setMatchData] = useState(null);
   const [results, setResults] = useState({});
   const [isLoading, setIsLoading] = useState(true);
@@ -226,14 +227,14 @@ export default function InputMatchResult({ matchId, onCancel, onSuccess }) {
 
 
   return (
-    <div className="min-h-full bg-gray-100 text-gray-900 font-sans p-6 md:p-12 selection:bg-black selection:text-yellow-300 pb-32">
+    <div className={`${embedded ? '' : 'min-h-full bg-gray-100 pb-32'} text-gray-900 font-sans ${embedded ? '' : 'p-6 md:p-12'} selection:bg-black selection:text-yellow-300`}>
       <style>{`
         @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
       `}</style>
 
-      <div className="max-w-4xl mx-auto animate-slide-in">
-        
+      <div className={`${embedded ? '' : 'max-w-4xl mx-auto'} animate-slide-in`}>
+
         {/* === 顶部控制台头部 === */}
         <div className="border-b-4 border-black pb-6 mb-10 flex flex-col md:flex-row justify-between md:items-end gap-6">
           <div>

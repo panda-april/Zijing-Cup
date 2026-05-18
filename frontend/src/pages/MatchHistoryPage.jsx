@@ -114,7 +114,7 @@ export default function MatchHistoryPage() {
                 </span>
               </div>
             </div>
-          )))
+          ))
           )}
         </div>
       </div>
