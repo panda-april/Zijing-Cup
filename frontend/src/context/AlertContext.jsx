@@ -1,4 +1,4 @@
-import React, { createContext, useReducer, useCallback, useRef, useEffect } from 'react';
+import React, { createContext, useReducer, useCallback, useEffect } from 'react';
 
 const AlertContext = createContext(null);
 
@@ -25,18 +25,15 @@ function createAlertItem(type, message, defaultValue, resolve, reject) {
 
 export function AlertProvider({ children }) {
   const [state, dispatch] = useReducer(alertReducer, { queue: [], current: null });
-  const processingRef = useRef(false);
 
   const processNext = useCallback(() => {
-    processingRef.current = false;
     if (state.queue.length === 0) return;
-    processingRef.current = true;
     const next = state.queue[0];
     dispatch({ type: 'SET_CURRENT', item: next });
   }, [state.queue.length]);
 
   useEffect(() => {
-    if (!state.current && state.queue.length > 0 && !processingRef.current) {
+    if (!state.current && state.queue.length > 0) {
       processNext();
     }
   }, [state.queue.length, state.current, processNext]);

@@ -3,15 +3,11 @@ import { useAlerts } from '../hooks/useAlerts';
 
 export default function CustomAlert() {
   const { current, handleConfirm, handleCancel } = useAlerts();
-  const [visible, setVisible] = useState(false);
   const [promptValue, setPromptValue] = useState('');
 
   useEffect(() => {
     if (current) {
       setPromptValue(current.defaultValue || '');
-      requestAnimationFrame(() => setVisible(true));
-    } else {
-      setVisible(false);
     }
   }, [current]);
 
@@ -20,7 +16,6 @@ export default function CustomAlert() {
   const type = current.type;
 
   const onConfirm = () => {
-    setVisible(false);
     setTimeout(() => {
       if (type === 'prompt') {
         handleConfirm(promptValue);
@@ -31,7 +26,6 @@ export default function CustomAlert() {
   };
 
   const onCancel = () => {
-    setVisible(false);
     setTimeout(() => handleCancel(), 150);
   };
 
