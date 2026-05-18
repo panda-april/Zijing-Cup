@@ -4,7 +4,7 @@ import api from '../utils/api';
 import { useAlerts } from '../hooks/useAlerts';
 
 export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateMatch }) {
-  const { showAlert } = useAlerts();
+  const { showAlert, showConfirm } = useAlerts();
   const { id } = useParams();
   const navigate = useNavigate();
   const teamId = propTeamId || id;
@@ -172,25 +172,29 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
     }
   };
 
-  const handleLeave = () => {
-    if(confirm("CONFIRM LEAVE TEAM?")) {
-      api.delete(`/teams/${myTeam.id}/leave`)
-        .then(() => {
-          setMyTeam({
-            ...myTeam,
-            members: myTeam.members.filter(m => m.id !== currentUser.id)
-          });
-          showAlert("You have left the team.");
-        })
-        .catch((error) => showAlert(error.response?.data?.error || '退出失败'));
+  const handleLeave = async () => {
+    const confirmed = await showConfirm("CONFIRM LEAVE TEAM?");
+    if (!confirmed) return;
+    try {
+      await api.delete(`/teams/${myTeam.id}/leave`);
+      setMyTeam({
+        ...myTeam,
+        members: myTeam.members.filter(m => m.id !== currentUser.id)
+      });
+      showAlert("You have left the team.");
+    } catch (error) {
+      showAlert(error.response?.data?.error || '退出失败');
     }
   };
 
-  const handleDisband = () => {
-    if(confirm("DANGER: DISBAND TEAM?")) {
-      api.delete(`/teams/${myTeam.id}`)
-        .then(() => setMyTeam(null))
-        .catch((error) => showAlert(error.response?.data?.error || '解散失败'));
+  const handleDisband = async () => {
+    const confirmed = await showConfirm("DANGER: DISBAND TEAM?");
+    if (!confirmed) return;
+    try {
+      await api.delete(`/teams/${myTeam.id}`);
+      setMyTeam(null);
+    } catch (error) {
+      showAlert(error.response?.data?.error || '解散失败');
     }
   };
 
@@ -231,7 +235,8 @@ export default function TeamManagement({ teamId: propTeamId, onBack, onNavigateM
   };
 
   const handleCancelSignup = async (tournamentId) => {
-    if (!confirm('确认取消报名该赛事吗？')) return;
+    const confirmed = await showConfirm('确认取消报名该赛事吗？');
+    if (!confirmed) return;
     try {
       await api.delete(`/tournaments/${tournamentId}/signup/${myTeam.id}`);
       showAlert('已取消报名');
