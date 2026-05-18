@@ -1,56 +1,39 @@
 import React, { useState, useEffect } from 'react';
-
-// 全局弹窗回调队列
-let alertQueue = [];
-let setGlobalShow = null;
-
-export function showAlert(message, onCloseCallback) {
-  alertQueue.push({ message, onCloseCallback });
-  // 如果弹窗没打开，触发打开第一个
-  if (setGlobalShow) {
-    setGlobalShow(true);
-  }
-}
+import { useAlerts } from '../hooks/useAlerts';
 
 export default function CustomAlert() {
-  const [show, setShow] = useState(false);
-  const [currentMessage, setCurrentMessage] = useState('');
-  const [currentOnClose, setCurrentOnClose] = useState(null);
+  const { current, handleConfirm, handleCancel } = useAlerts();
+  const [visible, setVisible] = useState(false);
+  const [promptValue, setPromptValue] = useState('');
 
-  setGlobalShow = setShow;
-
-  // 监听队列，当关闭时弹出下一个
-  const handleClose = () => {
-    setShow(false);
-    if (currentOnClose) {
-      currentOnClose();
-    }
-    // 弹出下一个
-    alertQueue.shift();
-    if (alertQueue.length > 0) {
-      setTimeout(() => {
-        const next = alertQueue[0];
-        setCurrentMessage(next.message);
-        setCurrentOnClose(next.onCloseCallback);
-        setShow(true);
-      }, 200);
+  useEffect(() => {
+    if (current) {
+      setPromptValue(current.defaultValue || '');
+      requestAnimationFrame(() => setVisible(true));
     } else {
-      setCurrentMessage('');
-      setCurrentOnClose(null);
+      setVisible(false);
     }
+  }, [current]);
+
+  if (!current) return null;
+
+  const type = current.type;
+
+  const onConfirm = () => {
+    setVisible(false);
+    setTimeout(() => {
+      if (type === 'prompt') {
+        handleConfirm(promptValue);
+      } else {
+        handleConfirm(undefined);
+      }
+    }, 150);
   };
 
-  // 初始化显示第一个
-  useEffect(() => {
-    if (!show && alertQueue.length > 0 && !currentMessage) {
-      const first = alertQueue[0];
-      setCurrentMessage(first.message);
-      setCurrentOnClose(first.onCloseCallback);
-      setShow(true);
-    }
-  }, [show, currentMessage]);
-
-  if (!show) return null;
+  const onCancel = () => {
+    setVisible(false);
+    setTimeout(() => handleCancel(), 150);
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/90 backdrop-blur-sm animate-fade-in">
@@ -62,21 +45,55 @@ export default function CustomAlert() {
               <circle cx="12" cy="12" r="9" stroke="currentColor"></circle>
             </svg>
           </div>
-          <h3 className="text-xl font-black text-center tracking-tight">Message</h3>
+          <h3 className="text-xl font-black text-center tracking-tight">
+            {type === 'alert' ? 'Message' : type === 'confirm' ? 'Confirmation' : 'Input Required'}
+          </h3>
         </div>
 
-        <div className="mb-8">
+        <div className="mb-6">
           <p className="text-sm font-bold text-gray-700 whitespace-pre-line text-center">
-            {currentMessage}
+            {current.message}
           </p>
         </div>
 
-        <button
-          onClick={handleClose}
-          className="w-full bg-black text-yellow-400 py-4 font-black tracking-widest hover:bg-yellow-400 hover:text-black transition-colors shadow-[4px_4px_0_0_#000] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
-        >
-          OK
-        </button>
+        {type === 'prompt' && (
+          <div className="mb-6">
+            <input
+              type="text"
+              value={promptValue}
+              onChange={(e) => setPromptValue(e.target.value)}
+              className="w-full border-2 border-black px-4 py-3 text-sm font-bold outline-none focus:border-yellow-400 transition-colors"
+              autoFocus
+            />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3">
+          {type === 'alert' && (
+            <button
+              onClick={onConfirm}
+              className="w-full bg-black text-yellow-400 py-4 font-black tracking-widest hover:bg-yellow-400 hover:text-black transition-colors shadow-[4px_4px_0_0_#000] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+            >
+              OK
+            </button>
+          )}
+          {(type === 'confirm' || type === 'prompt') && (
+            <>
+              <button
+                onClick={onConfirm}
+                className="w-full bg-red-600 text-white border-2 border-red-600 py-3 font-black tracking-widest hover:bg-red-700 transition-colors shadow-[4px_4px_0_0_#000] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+              >
+                CONFIRM
+              </button>
+              <button
+                onClick={onCancel}
+                className="w-full bg-black text-yellow-400 py-3 font-black tracking-widest hover:bg-yellow-400 hover:text-black transition-colors shadow-[4px_4px_0_0_#000] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
+              >
+                CANCEL
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
