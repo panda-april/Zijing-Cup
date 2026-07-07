@@ -5,7 +5,6 @@ node_modules
 # Environment variables
 .env
 .env.*
-!.env.example
 
 # Build output
 dist
@@ -17,22 +16,16 @@ build
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Prisma
-/generated/prisma
-prisma/migrations
-
-# Database files
+# Database
 *.db
 *.sqlite
 *.sqlite3
-dev.db
 
 # Test files
 test.http
@@ -47,16 +40,26 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # OS generated files
-Thumbs.db
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+Thumbs.db
 
 # Claude
-.claude/tasks
-.clude/scheduled_tasks.json
+.claude/*
 !.claude/settings.json
-!.claude/settings.local.json
+
+# Playwright
+.playwright-mcp/
+
+# Screenshots
+*.png
+
+# AI tool configs
+AGENTS.md
+
+# Seed/test data
+seed-test-data.*
