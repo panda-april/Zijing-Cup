@@ -60,6 +60,7 @@ Thumbs.db
 
 # AI tool configs
 AGENTS.md
+CLAUDE.md
 
 # Seed/test data
 seed-test-data.*
