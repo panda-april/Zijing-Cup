@@ -10,7 +10,7 @@ Zijing Cup is a full-stack esports tournament management platform. The backend i
 
 ### Backend (root directory)
 ```bash
-node index.js          # Start backend server on port 3000
+node src/app.js        # Start backend server on port 3000
 npx prisma studio      # Browse/edit database visually
 npx prisma db push     # Apply schema changes to dev.db
 npx prisma generate    # Regenerate Prisma client after schema changes
@@ -24,17 +24,27 @@ npm run lint   # ESLint
 ```
 
 ### Running the full stack
-Start backend first (`node index.js`), then frontend (`cd frontend && npm run dev`).
+Start backend first (`node src/app.js`), then frontend (`cd frontend && npm run dev`).
 
 ## Architecture
 
-### Backend (`index.js`)
-Single-file Express server (~1300 lines). Key patterns:
-- **Auth**: JWT tokens (24h expiry), `verifyToken` middleware, `requireAdmin` for administrator-only routes
+### Backend (`src/`)
+Modular Express server organized by domain:
+- **`src/app.js`**: Entry point — Express setup, CORS, JSON, mounts all routers
+- **`src/config/`**: JWT_SECRET and PORT from environment
+- **`src/middleware/`**: `auth.js` (verifyToken), `admin.js` (requireAdmin), `errorHandler.js` (centralized)
+- **`src/utils/`**: `AppError.js`, `recalcTournamentCurrentTeams.js`, `writeAdminLog.js`
+- **`src/services/`**: Business logic — `teamDashboardService.js`
+- **`src/routes/`**: 10 domain routers (auth, me, users, games, tournaments, teams, matches, proposals, notifications) + 2 admin routers
+- **`src/db.js`**: Shared Prisma client instance
+
+Key patterns:
+- **Auth**: JWT tokens (24h expiry), `verifyToken` middleware per-route, `requireAdmin` for administrator-only routes
 - **Roles**: `audience`, `captain`, `administrator`
 - **Transactions**: Critical operations (team creation, tournament signup, match results) use `prisma.$transaction()`
 - **Soft deletes**: Teams use `DisbandedAt` timestamp instead of hard delete
 - **Admin audit log**: All admin actions are logged to `AdminLog` model
+- **Bug fixes applied**: Undeclared variables in `/me/upcoming-matches`, admin log moved inside transaction, consistent Module casing
 
 API structure:
 - Public: `/api/users/register`, `/api/users/login`, `/api/games`, `/api/tournaments`, `/api/teams`, `/api/matches/recent|upcoming|history`
@@ -42,8 +52,12 @@ API structure:
 - Admin only: tournament/match CRUD, result locking, `/api/admin/stats|logs`
 
 ### Frontend (`frontend/src/`)
-- **`App.jsx`**: ~575 lines. Main application component with global state management, authentication, and navigation. Uses `activeTab` state for page switching (not URL routing).
-- **`pages/`**: 10 feature pages imported into App.jsx — `TeamManagement`, `TeamListSelect`, `CreateTeam`, `TournamentDetail`, `AdminConsole`, `MessageCenter`, `MatchDeploy`, `TournamentEdit`, `InputMatchResult`, `DeployTournament`
+- **`App.jsx`**: Main app with React Router v6 route definitions, context providers, and role-based route protection
+- **`components/`**: 7 shared components — `Layout`, `Navbar`, `Sidebar`, `LoginModal`, `CustomAlert`, `ProtectedRoute`, `RequireAdmin`
+- **`pages/`**: 17 page components + 3 wrapper components for standalone routing
+- **`pages/wrappers/`**: `DeployTournamentWrapper`, `TournamentEditWrapper`, `InputMatchResultWrapper` — adapt prop-driven pages for URL routing
+- **`context/`**: `AuthContext` (auth state + login modal), `AlertContext` (queue-based alert/confirm system)
+- **`hooks/`**: `useAuth`, `useAlerts`, `usePublicData`
 - **`utils/api.js`**: Axios instance with base URL `http://localhost:3000/api`, 10s timeout, auto Bearer token injection from localStorage, 401 → logout handler
 - Dependencies: React 19, Tailwind CSS v4, react-router-dom, Axios
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, Outlet } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
 export default function ProtectedRoute() {
@@ -7,7 +7,7 @@ export default function ProtectedRoute() {
 
   if (!isLoggedIn) {
     openLogin();
-    return <Navigate to="/" replace />;
+    return null;
   }
 
   return <Outlet />;
